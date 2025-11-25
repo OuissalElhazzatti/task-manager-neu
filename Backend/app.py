@@ -1,6 +1,7 @@
 from flask import Flask, jsonify, request
 from models import db, User, Task, Category
 from sqlalchemy import case
+from datetime import datetime,timedelta
 
 ALLOWED_STATUSES = ["To Do", "In Progress", "Done"]
 ALLOWED_PRIORITIES = ["low", "medium", "high"]
@@ -106,18 +107,27 @@ def create_task():
     if status not in ALLOWED_STATUSES:
         return jsonify({"error": "Invalid status"}), 400
 
-    # 👉 NEU: Priority aus dem Body lesen, Default = "medium"
     priority = data.get("priority", "medium").lower()
     if priority not in ALLOWED_PRIORITIES:
         return jsonify({"error": "Invalid priority, allowed: low, medium, high"}), 400
+
+    # 👉 NEU: due_date als String (ISO) aus dem JSON
+    due_date_str = data.get("due_date")
+    due_date = None
+    if due_date_str:
+        try:
+            due_date = datetime.fromisoformat(due_date_str)
+        except ValueError:
+            return jsonify({"error": "due_date must be ISO format, e.g. 2025-11-30T18:00:00"}), 400
 
     task = Task(
         title=data["title"],
         description=data.get("description", ""),
         status=status,
-        priority=priority,                 # 👉 NEU
+        priority=priority,
+        due_date=due_date,              # 👈 NEU
         user_id=data["user_id"],
-        category_id=data.get("category_id")  # optional
+        category_id=data.get("category_id")
     )
     db.session.add(task)
     db.session.commit()
@@ -133,21 +143,29 @@ def update_task(task_id):
     task.title = data.get("title", task.title)
     task.description = data.get("description", task.description)
 
-    # Status ändern
     if "status" in data:
         new_status = data["status"]
         if new_status not in ALLOWED_STATUSES:
             return jsonify({"error": "Invalid status"}), 400
         task.status = new_status
 
-    # 👉 NEU: Priority ändern
     if "priority" in data:
         new_priority = data["priority"].lower()
         if new_priority not in ALLOWED_PRIORITIES:
             return jsonify({"error": "Invalid priority, allowed: low, medium, high"}), 400
         task.priority = new_priority
 
-    # Kategorie optional ändern
+    # 👉 NEU: due_date ändern / löschen
+    if "due_date" in data:
+        due_date_str = data["due_date"]
+        if due_date_str in (None, "", "null"):
+            task.due_date = None
+        else:
+            try:
+                task.due_date = datetime.fromisoformat(due_date_str)
+            except ValueError:
+                return jsonify({"error": "due_date must be ISO format"}), 400
+
     if "category_id" in data:
         task.category_id = data["category_id"]
 
@@ -295,6 +313,67 @@ def board_view():
             board["done"].append(t.to_dict())
 
     return jsonify(board), 200
+
+# =======================
+# NOTIFICATIONS
+# =======================
+
+@app.route("/notifications", methods=["GET"])
+def get_notifications():
+    """
+    Benachrichtigungen:
+    - danger: Task ist überfällig
+    - warning: High-Priority-Task mit Deadline in den nächsten 24h
+    - info: High-Priority-Task ohne dringende Deadline
+    Optional: ?user_id=1 für user-spezifische Notifications.
+    """
+
+    user_id = request.args.get("user_id", type=int)
+
+    now = datetime.now()
+    soon_threshold = now + timedelta(days=1)   # 👉 24 Stunden
+
+    # Nur Tasks, die nicht erledigt sind
+    query = Task.query.filter(Task.status != "Done")
+
+    if user_id is not None:
+        query = query.filter_by(user_id=user_id)
+
+    tasks = query.all()
+
+    notifications = []
+
+    for t in tasks:
+        notif_type = None
+        message = None
+
+        # 1) ÜBERFÄLLIG → danger
+        if t.due_date and t.due_date < now:
+            notif_type = "danger"
+            message = f"Task '{t.title}' ist überfällig."
+
+        # 2) HIGH + DEADLINE IN 24H → warning
+        elif (
+            t.due_date
+            and now <= t.due_date <= soon_threshold
+            and t.priority == "high"
+        ):
+            notif_type = "warning"
+            message = f"High Priority Task '{t.title}' hat eine Deadline in weniger als 24 Stunden."
+
+        # 3) HIGH, aber noch nicht dringend → info
+        elif t.priority == "high":
+            notif_type = "info"
+            message = f"High Priority Task '{t.title}' ist noch offen."
+
+        if notif_type:
+            notifications.append({
+                "task": t.to_dict(),
+                "type": notif_type,
+                "message": message,
+            })
+
+    return jsonify(notifications), 200
 
 # =======================
 # Datenbank erstellen und App starten
