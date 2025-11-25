@@ -1,7 +1,9 @@
 from flask import Flask, jsonify, request
 from models import db, User, Task, Category
+from sqlalchemy import case
 
 ALLOWED_STATUSES = ["To Do", "In Progress", "Done"]
+ALLOWED_PRIORITIES = ["low", "medium", "high"]
 
 app = Flask(__name__)
 
@@ -11,7 +13,6 @@ app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 
 db.init_app(app)
 
-ALLOWED_STATUSES = ["To Do", "In Progress", "Done"]
 
 
 @app.route("/")
@@ -46,7 +47,20 @@ def get_user(user_id):
 
 @app.route("/users/<int:user_id>/tasks", methods=["GET"])
 def get_user_tasks(user_id):
-    tasks = Task.query.filter_by(user_id=user_id).all()
+    priority_order = case(
+        (Task.priority == "high", 1),
+        (Task.priority == "medium", 2),
+        (Task.priority == "low", 3),
+        else_=4,
+    )
+
+    tasks = (
+        Task.query
+        .filter_by(user_id=user_id)
+        .order_by(priority_order, Task.id.asc())
+        .all()
+    )
+
     return jsonify([t.to_dict() for t in tasks])
 
 
@@ -57,9 +71,31 @@ def get_user_tasks(user_id):
 # ✔ Alle Tasks abrufen
 @app.route("/tasks", methods=["GET"])
 def get_tasks():
-    tasks = Task.query.all()
-    return jsonify([t.to_dict() for t in tasks])
+    # Sortierreihenfolge definieren
+    priority_order = case(
+        (Task.priority == "high", 1),
+        (Task.priority == "medium", 2),
+        (Task.priority == "low", 3),
+        else_=4,
+    )
 
+    # Basis-Query
+    query = Task.query
+
+    # 🔹 Optionaler Filter: ?priority=high / medium / low
+    priority_filter = request.args.get("priority")
+    if priority_filter:
+        priority_filter = priority_filter.lower()
+        if priority_filter not in ALLOWED_PRIORITIES:
+            return jsonify(
+                {"error": "Invalid priority filter, allowed: low, medium, high"}
+            ), 400
+        query = query.filter_by(priority=priority_filter)
+
+    # Immer sortiert zurückgeben
+    tasks = query.order_by(priority_order, Task.id.asc()).all()
+
+    return jsonify([t.to_dict() for t in tasks])
 
 # ✔ Neuen Task erstellen
 @app.route("/tasks", methods=["POST"])
@@ -70,10 +106,16 @@ def create_task():
     if status not in ALLOWED_STATUSES:
         return jsonify({"error": "Invalid status"}), 400
 
+    # 👉 NEU: Priority aus dem Body lesen, Default = "medium"
+    priority = data.get("priority", "medium").lower()
+    if priority not in ALLOWED_PRIORITIES:
+        return jsonify({"error": "Invalid priority, allowed: low, medium, high"}), 400
+
     task = Task(
         title=data["title"],
         description=data.get("description", ""),
         status=status,
+        priority=priority,                 # 👉 NEU
         user_id=data["user_id"],
         category_id=data.get("category_id")  # optional
     )
@@ -91,14 +133,21 @@ def update_task(task_id):
     task.title = data.get("title", task.title)
     task.description = data.get("description", task.description)
 
-    # → Status ändern nur wenn vorhanden
+    # Status ändern
     if "status" in data:
         new_status = data["status"]
         if new_status not in ALLOWED_STATUSES:
             return jsonify({"error": "Invalid status"}), 400
         task.status = new_status
 
-    # → Kategorie optional ändern
+    # 👉 NEU: Priority ändern
+    if "priority" in data:
+        new_priority = data["priority"].lower()
+        if new_priority not in ALLOWED_PRIORITIES:
+            return jsonify({"error": "Invalid priority, allowed: low, medium, high"}), 400
+        task.priority = new_priority
+
+    # Kategorie optional ändern
     if "category_id" in data:
         task.category_id = data["category_id"]
 
@@ -196,33 +245,56 @@ def delete_category(category_id):
 # Alle Tasks einer Kategorie
 @app.route("/categories/<int:category_id>/tasks", methods=["GET"])
 def get_tasks_by_category(category_id):
-    tasks = Task.query.filter_by(category_id=category_id).all()
+    priority_order = case(
+        (Task.priority == "high", 1),
+        (Task.priority == "medium", 2),
+        (Task.priority == "low", 3),
+        else_=4,
+    )
+
+    tasks = (
+        Task.query
+        .filter_by(category_id=category_id)
+        .order_by(priority_order, Task.id.asc())
+        .all()
+    )
+
     return jsonify([t.to_dict() for t in tasks]), 200
 
 # =======================
-# Board
+# BOARD ROUTE (KANNBAN)
 # =======================
-@app.route("/board", methods=["GET"])
-def get_board():
-    tasks = Task.query.all()
 
-    # Nach Status sortieren
-    columns = {
-        "To Do": [],
-        "In Progress": [],
-        "Done": []
+@app.route("/board", methods=["GET"])
+def board_view():
+    priority_order = case(
+        (Task.priority == "high", 1),
+        (Task.priority == "medium", 2),
+        (Task.priority == "low", 3),
+        else_=4,
+    )
+
+    tasks = (
+        Task.query
+        .order_by(priority_order, Task.id.asc())
+        .all()
+    )
+
+    board = {
+        "to_do": [],
+        "in_progress": [],
+        "done": []
     }
 
     for t in tasks:
-        status = t.status if t.status in columns else "To Do"
-        columns[status].append(t.to_dict())
+        if t.status == "To Do":
+            board["to_do"].append(t.to_dict())
+        elif t.status == "In Progress":
+            board["in_progress"].append(t.to_dict())
+        elif t.status == "Done":
+            board["done"].append(t.to_dict())
 
-    # Frontend-freundliche Keys
-    return jsonify({
-        "todo": columns["To Do"],
-        "in_progress": columns["In Progress"],
-        "done": columns["Done"]
-    }), 200
+    return jsonify(board), 200
 
 # =======================
 # Datenbank erstellen und App starten

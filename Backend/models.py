@@ -32,6 +32,7 @@ class Task(db.Model):
     description = db.Column(db.Text)
     status = db.Column(db.String(50), default="To Do")
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    priority = db.Column(db.String(10), default="medium", nullable=False)
 
     user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False)
     category_id = db.Column(db.Integer, db.ForeignKey("categories.id"), nullable=True)
@@ -45,4 +46,5 @@ class Task(db.Model):
             "created_at": self.created_at.isoformat(),
             "user_id": self.user_id,
             "category_id": self.category_id,
+            "priority": self.priority,
         }
