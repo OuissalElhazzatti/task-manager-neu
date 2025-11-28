@@ -2,11 +2,15 @@ from flask import Flask, jsonify, request
 from models import db, User, Task, Category
 from sqlalchemy import case
 from datetime import datetime,timedelta
+from flask_cors import CORS
 
 ALLOWED_STATUSES = ["To Do", "In Progress", "Done"]
 ALLOWED_PRIORITIES = ["low", "medium", "high"]
 
 app = Flask(__name__)
+
+CORS(app)
+
 
 # Datenbank Konfiguration
 app.config["SQLALCHEMY_DATABASE_URI"] = "sqlite:///tasks.db"

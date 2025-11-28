@@ -1,0 +1,147 @@
+/* ======================================
+   Seiten-Layout
+   ====================================== */
+.page-wrapper {
+  max-width: 1300px;
+  margin: 0 auto;
+  padding: 2rem;
+  color: white;
+  font-family: Arial, sans-serif;
+  text-align: left;
+  background-color: #1b1b1b;
+  min-height: 100vh;
+}
+
+/* ======================================
+   Header
+   ====================================== */
+.page-header {
+  text-align: center;
+  margin-bottom: 2rem;
+}
+
+.page-subtitle {
+  color: #cccccc;
+  font-size: 1rem;
+}
+
+/* ======================================
+   Fehlermeldung
+   ====================================== */
+.error-text {
+  color: red;
+  text-align: center;
+  margin-bottom: 1rem;
+}
+
+/* ======================================
+   KANBAN BOARD (3 Spalten)
+   ====================================== */
+.board {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 1.5rem;
+}
+
+/* ======================================
+   KANBAN SPALTEN
+   ====================================== */
+.column {
+  background-color: #242424;
+  padding: 1rem;
+  border-radius: 12px;
+  border: 1px solid #333;
+  min-height: 300px;
+}
+
+.column-title {
+  font-size: 1.4rem;
+  margin-bottom: 1rem;
+  color: #ffffff;
+  text-align: center;
+}
+
+.column-empty {
+  text-align: center;
+  color: #777;
+}
+
+/* ======================================
+   TASK-KARTE
+   ====================================== */
+.task-card {
+  background-color: #2f2f2f;
+  padding: 1rem;
+  border-radius: 10px;
+  margin-bottom: 1rem;
+  border: 1px solid #444;
+}
+
+.task-title {
+  font-size: 1.2rem;
+  margin-bottom: 0.4rem;
+}
+
+.task-description {
+  color: #cccccc;
+  margin-bottom: 0.5rem;
+  font-size: 0.9rem;
+}
+
+.task-meta {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 0.3rem;
+}
+
+/* ======================================
+   STATUS DROPDOWN
+   ====================================== */
+.status-label {
+  font-size: 0.85rem;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.status-select {
+  background-color: #111;
+  color: white;
+  border-radius: 8px;
+  padding: 0.25rem 0.6rem;
+  border: 1px solid gray;
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+
+/* ======================================
+   PRIORITY DOTS (FARBIGE KREISE)
+   ====================================== */
+.priority-dot {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  display: inline-block;
+}
+
+.priority-dot-high {
+  background-color: #ff4d4d;
+}
+
+.priority-dot-medium {
+  background-color: #ffa500;
+}
+
+.priority-dot-low {
+  background-color: #32cd32;
+}
+
+/* ======================================
+   RESPONSIVE (Handy-Ansicht)
+   ====================================== */
+@media (max-width: 900px) {
+  .board {
+    grid-template-columns: 1fr;
+  }
+}
