@@ -106,6 +106,8 @@ def get_tasks():
 @app.route("/tasks", methods=["POST"])
 def create_task():
     data = request.get_json()
+    
+    print("DEBUG: NEUE create_task Version – user_id = 1")  # 👈 hinzufügen
 
     status = data.get("status", "To Do")
     if status not in ALLOWED_STATUSES:
@@ -115,7 +117,7 @@ def create_task():
     if priority not in ALLOWED_PRIORITIES:
         return jsonify({"error": "Invalid priority, allowed: low, medium, high"}), 400
 
-    # 👉 NEU: due_date als String (ISO) aus dem JSON
+    # due_date (optional)
     due_date_str = data.get("due_date")
     due_date = None
     if due_date_str:
@@ -125,14 +127,15 @@ def create_task():
             return jsonify({"error": "due_date must be ISO format, e.g. 2025-11-30T18:00:00"}), 400
 
     task = Task(
-        title=data["title"],
+        title=data.get("title", ""),
         description=data.get("description", ""),
         status=status,
         priority=priority,
-        due_date=due_date,              # 👈 NEU
-        user_id=data["user_id"],
+        due_date=due_date,
+        user_id=1,                      # ✅ feste User-ID
         category_id=data.get("category_id")
     )
+
     db.session.add(task)
     db.session.commit()
     return jsonify(task.to_dict()), 201

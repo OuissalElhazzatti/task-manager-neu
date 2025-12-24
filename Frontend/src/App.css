@@ -37,10 +37,25 @@
 /* ======================================
    KANBAN BOARD (3 Spalten)
    ====================================== */
+/* ======= KANBAN BOARD – mobile first ======= */
 .board {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: 1fr;  /* 👉 Handy: 1 Spalte */
   gap: 1.5rem;
+}
+
+/* Tablet: 2 Spalten */
+@media (min-width: 600px) {
+  .board {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+/* Laptop/Desktop: 3 Spalten */
+@media (min-width: 900px) {
+  .board {
+    grid-template-columns: repeat(3, 1fr);
+  }
 }
 
 /* ======================================
@@ -138,10 +153,84 @@
 }
 
 /* ======================================
-   RESPONSIVE (Handy-Ansicht)
+   NEUE TASK – Formular
    ====================================== */
-@media (max-width: 900px) {
-  .board {
-    grid-template-columns: 1fr;
+.new-task-card {
+  background-color: #242424;
+  padding: 1rem 1.5rem;
+  border-radius: 12px;
+  border: 1px solid #333;
+  margin-bottom: 2rem;
+}
+
+.new-task-title {
+  font-size: 1.3rem;
+  margin-bottom: 0.8rem;
+  text-align: left;
+}
+
+.new-task-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.form-row {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+.form-row-inline {
+  flex-direction: row;
+  gap: 1rem;
+}
+
+.form-row-inline .form-label {
+  flex: 1;
+}
+
+.form-label {
+  font-size: 0.85rem;
+  color: #dddddd;
+}
+
+.form-input,
+.form-textarea,
+.form-select {
+  width: 100%;
+  background-color: #1a1a1a;
+  color: white;
+  border-radius: 8px;
+  border: 1px solid #555;
+  padding: 0.4rem 0.6rem;
+  font-size: 0.9rem;
+}
+
+.form-input::placeholder,
+.form-textarea::placeholder {
+  color: #777;
+}
+
+.form-button {
+  align-self: flex-start;
+  background-color: #3b82f6;
+  color: white;
+  border: none;
+  border-radius: 999px;
+  padding: 0.4rem 1rem;
+  font-size: 0.9rem;
+  cursor: pointer;
+}
+
+.form-button:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+/* Handy: die Status/Priority-Reihe untereinander statt nebeneinander */
+@media (max-width: 600px) {
+  .form-row-inline {
+    flex-direction: column;
   }
 }

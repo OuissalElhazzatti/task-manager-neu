@@ -2,6 +2,12 @@
 // ======================================
 // Diese Datei kümmert sich um die Kommunikation
 // zwischen React und deinem Flask-Backend.
+// 💡 Die Datei enthält 4 Funktionen:
+
+//   1️⃣ fetchTasks() → Tasks holen
+//   2️⃣ createTask() → neue Task erstellen
+//   3️⃣ updateTask() → eine Task updaten
+//   4️⃣ fetchNotifications() → Notifications holen
 // ======================================
 
 // 👉 Backend-URL anpassen, falls nötig
