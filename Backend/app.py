@@ -139,7 +139,9 @@ def create_task():
     status = data.get("status", "To Do")
     priority = data.get("priority", "medium")
     work_date = data.get("work_date")  # z.B. "2025-12-26"
+    repeat_days_list = data.get("repeat_days")  # z.B. ["SAT"] oder ["MON","FRI"]
     due_date_str = data.get("due_date") or data.get("deadline")  # je nach Frontend-Feld
+    
 
     # 🔹 1. USER-ID setzen (automatisch)
     user = User.query.first()
@@ -167,6 +169,7 @@ def create_task():
         priority=priority,
         work_date=work_date,
         due_date=due_date,
+        repeat_days=",".join(repeat_days_list) if repeat_days_list else None,
         user_id=user.id,   # <- ganz wichtig
         # category_id kannst du später ergänzen
     )

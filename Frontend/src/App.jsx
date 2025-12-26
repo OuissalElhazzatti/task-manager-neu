@@ -107,6 +107,15 @@ function KanbanPage() {
   const [searchParams] = useSearchParams();
   const selectedDate = searchParams.get("date"); // string oder null
 
+  // Hilfsfunktion: macht aus einem Datum (YYYY-MM-DD) ein Kürzel wie "MON", "TUE", ...
+  const getWeekdayCode = (dateStr) => {
+    if (!dateStr) return null;
+    const d = new Date(dateStr);
+    const day = d.getDay(); // 0=So, 1=Mo, ...
+    const map = ["SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"];
+    return map[day];
+  };
+
   // State
   const [tasks, setTasks] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -133,14 +142,29 @@ function KanbanPage() {
   }, []);
 
   // Tasks nach Status + Arbeitstag filtern
-  const tasksByStatus = (status) =>
+    const tasksByStatus = (status) =>
     tasks.filter((task) => {
       if (!selectedDate) {
         // Kein Tag gewählt → alle Tasks mit diesem Status
         return task.status === status;
       }
-      // Nur Tasks, die zu diesem Arbeitstag gehören
-      return task.status === status && task.work_date === selectedDate;
+
+      // Wochentag des ausgewählten Datums (z.B. "MON")
+      const weekdayCode = getWeekdayCode(selectedDate);
+
+      // repeat_days vom Backend ist z.B. "MON,SAT" oder null
+      const repeatStr = task.repeat_days || "";
+      const repeatList = repeatStr.split(",").filter(Boolean); // ["MON","SAT"]
+
+      const matchesStatus = task.status === status;
+
+      // 1) Task gehört GENAU zu diesem Datum (normaler Task)
+      const matchesWorkDate = task.work_date === selectedDate;
+
+      // 2) ODER Task ist eine Gewohnheit und heute ist einer seiner repeat_days
+      const matchesRepeat = repeatList.includes(weekdayCode);
+
+      return matchesStatus && (matchesWorkDate || matchesRepeat);
     });
 
   // Status aus der Karte ändern (wie früher)
@@ -285,6 +309,8 @@ function NewTaskForm({ onCreate, isSubmitting, initialDate }) {
   // Deadline (datetime-local)
   const [dueDate, setDueDate] = useState("");
 
+  const [repeatDays, setRepeatDays] = useState([]);
+
   const handleSubmit = (event) => {
     event.preventDefault();
 
@@ -303,6 +329,8 @@ function NewTaskForm({ onCreate, isSubmitting, initialDate }) {
       due_date: dueDate || null,
       // Arbeitstag aus der URL (Kalender-Tag)
       work_date: initialDate || null,
+      // NEU: Wiederholungstage (Liste)
+      repeat_days: repeatDays,
     };
 
     console.log("Sende neuen Task:", newTaskData);
@@ -395,6 +423,37 @@ function NewTaskForm({ onCreate, isSubmitting, initialDate }) {
               onChange={(e) => setDueDate(e.target.value)}
             />
           </label>
+        </div>
+
+        {/* NEU: Wiederholen an bestimmten Tagen (z.B. Samstag) */}
+        <div className="form-row">
+          <span className="form-label">Wiederholen an:</span>
+          <div className="repeat-days">
+            {[
+              { code: "MON", label: "Mo" },
+              { code: "TUE", label: "Di" },
+              { code: "WED", label: "Mi" },
+              { code: "THU", label: "Do" },
+              { code: "FRI", label: "Fr" },
+              { code: "SAT", label: "Sa" },
+              { code: "SUN", label: "So" },
+            ].map((day) => (
+              <label key={day.code} className="repeat-day-option">
+                <input
+                  type="checkbox"
+                  checked={repeatDays.includes(day.code)}
+                  onChange={() => {
+                    setRepeatDays((prev) =>
+                      prev.includes(day.code)
+                        ? prev.filter((d) => d !== day.code)
+                        : [...prev, day.code]
+                    );
+                  }}
+                />
+                {day.label}
+              </label>
+            ))}
+          </div>
         </div>
 
         {/* Button */}

@@ -39,6 +39,9 @@ class Task(db.Model):
     # due_date = Deadline (kann DateTime sein, wie du es schon hattest)
     due_date = db.Column(db.DateTime)
 
+    # NEU: Wiederholungstage als Text, z.B. "MON,SAT"
+    repeat_days = db.Column(db.String(50))
+
     user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False)
     category_id = db.Column(db.Integer, db.ForeignKey("categories.id"))
 
@@ -51,6 +54,7 @@ class Task(db.Model):
             "priority": self.priority,
             "work_date": self.work_date,
             "due_date": self.due_date.isoformat() if self.due_date else None,
+            "repeat_days": self.repeat_days,
             "user_id": self.user_id,
             "category_id": self.category_id,
         }

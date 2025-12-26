@@ -15,3 +15,17 @@ body {
 #root {
   min-height: 100vh;
 }
+
+.repeat-days {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  margin-top: 0.25rem;
+}
+
+.repeat-day-option {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  font-size: 0.85rem;
+}
