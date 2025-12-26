@@ -445,6 +445,11 @@ function KanbanColumn({ title, tasks, onStatusChange }) {
 // ======================================
 
 function TaskCard({ task, onStatusChange }) {
+
+  const deadlineText = task.due_date
+    ? new Date(task.due_date).toLocaleString("de-DE")
+    : null;
+
   // Priority wird in eine CSS-Klasse übersetzt,
   // damit wir im CSS die richtige Farbe setzen können.
   const priorityClass =
@@ -469,7 +474,11 @@ function TaskCard({ task, onStatusChange }) {
       {task.description && (
         <p className="task-description">{task.description}</p>
       )}
-
+      {deadlineText && (
+         <p className="task-deadline">
+           <strong>Deadline:</strong> {deadlineText}
+         </p>
+      )}
       {/* Untere Zeile: Status-Dropdown + Priority-Punkt */}
       <div className="task-meta">
         {/* Status-Dropdown */}
