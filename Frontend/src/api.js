@@ -26,6 +26,21 @@ export async function fetchTasks() {
 }
 
 // --------------------------------------
+// Task löschen (DELETE /tasks/<id>)
+// --------------------------------------
+export async function deleteTask(id) {
+  const res = await fetch(`${API_BASE_URL}/tasks/${id}`, {
+    method: "DELETE",
+  });
+
+  if (!res.ok) {
+    throw new Error("Fehler beim Löschen der Task");
+  }
+
+  return res.json(); // enthält {"message": "Task gelöscht"}
+}
+
+// --------------------------------------
 // Neue Task erstellen (POST /tasks)
 // --------------------------------------
 export async function createTask(taskData) {

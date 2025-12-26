@@ -29,3 +29,32 @@ body {
   gap: 0.25rem;
   font-size: 0.85rem;
 }
+
+.task-card {
+  position: relative; /* wichtig für die Position der Icons */
+}
+
+/* Container für die Icons (Pencil + Trash) */
+.task-actions {
+  position: absolute;
+  top: 0.5rem;
+  right: 0.5rem;
+  display: flex;
+  gap: 0.25rem;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+
+/* Nur zeigen, wenn die Karte gehovert wird */
+.task-card:hover .task-actions {
+  opacity: 1;
+}
+
+/* Icon-Buttons (ohne hässlichen Button-Rand) */
+.icon-button {
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  font-size: 0.9rem;
+  padding: 0;
+}  

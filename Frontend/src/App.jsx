@@ -22,7 +22,7 @@ import "./App.css";
 // fetchTasks  = alle Tasks aus der Datenbank lesen (GET /tasks)
 // updateTask  = eine bestehende Task ändern      (PUT /tasks/:id)
 // createTask  = eine neue Task erstellen         (POST /tasks)
-import { fetchTasks, updateTask, createTask } from "./api";
+import { fetchTasks, updateTask, createTask, deleteTask } from "./api";
 
 
 // ===============================
@@ -111,6 +111,10 @@ function KanbanPage() {
   const getWeekdayCode = (dateStr) => {
     if (!dateStr) return null;
     const d = new Date(dateStr);
+    if (isNaN(d.getTime())) {
+      console.warn("Ungültiges Datum in getWeekdayCode:", dateStr);
+      return null;
+    }
     const day = d.getDay(); // 0=So, 1=Mo, ...
     const map = ["SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"];
     return map[day];
@@ -141,15 +145,14 @@ function KanbanPage() {
     loadData();
   }, []);
 
-  // Tasks nach Status + Arbeitstag filtern
-    const tasksByStatus = (status) =>
+  // Tasks nach Status + Arbeitstag / repeat_days filtern
+  const tasksByStatus = (status) =>
     tasks.filter((task) => {
       if (!selectedDate) {
         // Kein Tag gewählt → alle Tasks mit diesem Status
         return task.status === status;
       }
 
-      // Wochentag des ausgewählten Datums (z.B. "MON")
       const weekdayCode = getWeekdayCode(selectedDate);
 
       // repeat_days vom Backend ist z.B. "MON,SAT" oder null
@@ -157,12 +160,9 @@ function KanbanPage() {
       const repeatList = repeatStr.split(",").filter(Boolean); // ["MON","SAT"]
 
       const matchesStatus = task.status === status;
-
-      // 1) Task gehört GENAU zu diesem Datum (normaler Task)
       const matchesWorkDate = task.work_date === selectedDate;
-
-      // 2) ODER Task ist eine Gewohnheit und heute ist einer seiner repeat_days
-      const matchesRepeat = repeatList.includes(weekdayCode);
+      const matchesRepeat =
+        weekdayCode && repeatList.length > 0 && repeatList.includes(weekdayCode);
 
       return matchesStatus && (matchesWorkDate || matchesRepeat);
     });
@@ -178,6 +178,19 @@ function KanbanPage() {
     } catch (err) {
       console.error(err);
       setError(err.message || "Fehler beim Ändern des Status");
+    }
+  };
+
+  // Task löschen
+  const handleDeleteTask = async (taskId) => {
+    try {
+      setError("");
+      await deleteTask(taskId);
+      // lokal aus dem State entfernen
+      setTasks((prev) => prev.filter((t) => t.id !== taskId));
+    } catch (err) {
+      console.error(err);
+      setError(err.message || "Fehler beim Löschen der Task");
     }
   };
 
@@ -235,18 +248,22 @@ function KanbanPage() {
           title="To Do"
           tasks={tasksByStatus("To Do")}
           onStatusChange={handleStatusChange}
+          onDeleteTask={handleDeleteTask}
         />
         <KanbanColumn
           title="In Progress"
           tasks={tasksByStatus("In Progress")}
           onStatusChange={handleStatusChange}
+          onDeleteTask={handleDeleteTask}
         />
         <KanbanColumn
           title="Done"
           tasks={tasksByStatus("Done")}
           onStatusChange={handleStatusChange}
+          onDeleteTask={handleDeleteTask}
         />
       </section>
+
     </div>
   );
 }
@@ -475,22 +492,21 @@ function NewTaskForm({ onCreate, isSubmitting, initialDate }) {
 // Spalte im Kanban-Board
 // ======================================
 
-function KanbanColumn({ title, tasks, onStatusChange }) {
+function KanbanColumn({ title, tasks, onStatusChange, onDeleteTask }) {
   return (
     <div className="column">
       <h2 className="column-title">{title}</h2>
 
-      {/* Falls keine Tasks in dieser Spalte sind */}
       {tasks.length === 0 ? (
         <p className="column-empty">Keine Tasks</p>
       ) : (
-        // Sonst alle Tasks als Karten anzeigen
         <div className="column-tasks">
           {tasks.map((task) => (
             <TaskCard
-              key={task.id}               // React braucht einen eindeutigen key
-              task={task}                 // die Task selbst
-              onStatusChange={onStatusChange} // Funktion zum Status ändern
+              key={task.id}
+              task={task}
+              onStatusChange={onStatusChange}
+              onDeleteTask={onDeleteTask}
             />
           ))}
         </div>
@@ -503,7 +519,7 @@ function KanbanColumn({ title, tasks, onStatusChange }) {
 // Task-Karte (einzelne Aufgabe im Board)
 // ======================================
 
-function TaskCard({ task, onStatusChange }) {
+function TaskCard({ task, onStatusChange, onDeleteTask }) {
 
   const deadlineText = task.due_date
     ? new Date(task.due_date).toLocaleString("de-DE")
@@ -538,6 +554,25 @@ function TaskCard({ task, onStatusChange }) {
            <strong>Deadline:</strong> {deadlineText}
          </p>
       )}
+
+      {/* Aktionen oben rechts: Bearbeiten & Löschen (sichtbar bei Hover) */}
+      <div className="task-actions">
+        <button
+          type="button"
+          className="icon-button"
+          onClick={() => alert("Bearbeiten kommt später 😊")}
+        >
+          ✏️
+        </button>
+        <button
+          type="button"
+          className="icon-button"
+          onClick={() => onDeleteTask && onDeleteTask(task.id)}
+        >
+          🗑️
+        </button>
+      </div>
+
       {/* Untere Zeile: Status-Dropdown + Priority-Punkt */}
       <div className="task-meta">
         {/* Status-Dropdown */}
