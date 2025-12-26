@@ -11,7 +11,9 @@
 // 🔹 React Hooks importieren:
 // useState = Werte speichern, die sich ändern (State)
 // useEffect = Code ausführen, wenn die Komponente geladen wird (z.B. Daten laden)
-import { useEffect, useState } from "react";
+
+import { useState, useEffect } from "react";
+import { Routes, Route, useNavigate, useSearchParams } from "react-router-dom";
 
 // 🔹 CSS-Datei für das Styling importieren
 import "./App.css";
@@ -22,146 +24,193 @@ import "./App.css";
 // createTask  = eine neue Task erstellen         (POST /tasks)
 import { fetchTasks, updateTask, createTask } from "./api";
 
+
+// ===============================
+// KALENDER-SEITE (Startseite "/")
+// ===============================
+function CalendarPage() {
+  const navigate = useNavigate();          // zum Wechseln auf /board
+  const [viewMode, setViewMode] = useState("week"); // "week" oder "month"
+
+  const today = new Date();
+
+  // Woche = heute + nächste 6 Tage
+  const weekDays = Array.from({ length: 7 }, (_, i) => {
+    const d = new Date(today);
+    d.setDate(d.getDate() + i);
+    return d;
+  });
+
+  // Monat = 30 Tage im aktuellen Monat (einfaches Beispiel)
+  const monthDays = Array.from({ length: 30 }, (_, i) => {
+    const d = new Date(today.getFullYear(), today.getMonth(), i + 1);
+    return d;
+  });
+
+  const daysToShow = viewMode === "week" ? weekDays : monthDays;
+
+  const handleDayClick = (date) => {
+  // Datum in Form "YYYY-MM-DD" holen
+  const isoDate = date.toISOString().split("T")[0];
+
+  // zur Board-Seite navigieren und Datum als Query-Parameter mitschicken
+  // z.B. /board?date=2025-12-25
+  navigate(`/board?date=${isoDate}`);
+};
+
+  return (
+    <div className="calendar-page">
+      <h1>📅 Dein Task Kalender</h1>
+
+      {/* Umschalter Woche / Monat */}
+      <div className="calendar-toggle">
+        <button
+          className={viewMode === "week" ? "active" : ""}
+          onClick={() => setViewMode("week")}
+        >
+          Woche
+        </button>
+        <button
+          className={viewMode === "month" ? "active" : ""}
+          onClick={() => setViewMode("month")}
+        >
+          Monat
+        </button>
+      </div>
+
+      {/* Grid mit Tagen */}
+      <div className="calendar-grid">
+        {daysToShow.map((d, index) => (
+          <button
+            key={index}
+            className="calendar-day"
+            onClick={() => handleDayClick(d)}
+          >
+            {d.toLocaleDateString("de-DE", {
+              weekday: viewMode === "week" ? "short" : undefined,
+              day: "2-digit",
+              month: "2-digit",
+            })}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+
 // ======================================
 // Haupt-Komponente der App
 // ======================================
-function App() {
-  // ---------- STATE-VARIABLEN ----------
+function KanbanPage() {
+  // Datum aus der URL, z.B. /board?date=2025-12-26
+  const [searchParams] = useSearchParams();
+  const selectedDate = searchParams.get("date"); // string oder null
 
-  // 🔹 tasks: Liste aller Tasks, die wir vom Backend erhalten
-  // Beispiel-Inhalt: [{id: 1, title: "X", status: "To Do", priority: "high"}, ...]
+  // State
   const [tasks, setTasks] = useState([]);
-
-  // 🔹 loading: true, solange wir noch auf die Antwort vom Backend warten
   const [loading, setLoading] = useState(true);
-
-  // 🔹 error: wenn irgendetwas schiefgeht (z.B. Server down),
-  // speichern wir hier die Fehlermeldung als Text
   const [error, setError] = useState("");
-
-  // 🔹 isCreating: zeigt an, ob wir gerade eine neue Task ans Backend schicken
-  // wenn true → Button im Formular zeigt "Wird erstellt..."
   const [isCreating, setIsCreating] = useState(false);
 
-  // ---------- DATEN BEIM LADEN HOLEN ----------
-
-  // useEffect mit [] bedeutet:
-  // → führe diesen Code einmal aus, wenn die Komponente das erste Mal angezeigt wird
+  // Beim Laden Tasks holen
   useEffect(() => {
-    // Wir definieren eine async-Funktion, um await benutzen zu können
     const loadData = async () => {
       try {
-        // bevor wir laden:
-        setLoading(true);  // "wir sind am Laden" aktivieren
-        setError("");      // alte Fehlermeldung löschen
-
-        // 👉 Tasks vom Backend holen (GET http://127.0.0.1:5000/tasks)
+        setLoading(true);
+        setError("");
         const data = await fetchTasks();
-
-        // Die Antwort (Array von Tasks) in den State speichern
         setTasks(data);
       } catch (err) {
-        // Wenn ein Fehler auftritt (z.B. Backend nicht erreichbar):
-        // err.message enthält die Fehlermeldung
-        setError(err.message);
+        console.error(err);
+        setError(err.message || "Fehler beim Laden der Tasks");
       } finally {
-        // Egal ob Erfolg oder Fehler: Laden beenden
         setLoading(false);
       }
     };
 
-    // definierte Funktion wirklich aufrufen
     loadData();
-  }, []); // [] = nur beim ersten Render
+  }, []);
 
-  // ---------- HILFSFUNKTION: NACH STATUS FILTERN ----------
-
-  // Diese Funktion nimmt einen Status (z.B. "To Do")
-  // und gibt nur die Tasks zurück, die diesen Status haben.
+  // Tasks nach Status + Arbeitstag filtern
   const tasksByStatus = (status) =>
-    tasks.filter((task) => task.status === status);
+    tasks.filter((task) => {
+      if (!selectedDate) {
+        // Kein Tag gewählt → alle Tasks mit diesem Status
+        return task.status === status;
+      }
+      // Nur Tasks, die zu diesem Arbeitstag gehören
+      return task.status === status && task.work_date === selectedDate;
+    });
 
-  // ---------- STATUS ÄNDERN (DROPDOWN IN TASK-KARTE) ----------
-
-  // Wird von TaskCard aufgerufen, wenn der User einen neuen Status im Dropdown wählt.
-  // taskId   = ID der zu ändernden Task
-  // newStatus = neuer Status (z.B. "Done")
+  // Status aus der Karte ändern (wie früher)
   const handleStatusChange = async (taskId, newStatus) => {
     try {
-      setError(""); // alte Fehlermeldung löschen
-
-      // 1) Backend aufrufen:
-      // updateTask schickt ein PUT /tasks/:id mit Body { status: newStatus }
+      setError("");
       const updatedTask = await updateTask(taskId, { status: newStatus });
-
-      // 2) React-State aktualisieren:
-      // Wir gehen durch alle Tasks und ersetzen nur die mit der passenden ID.
-      setTasks((prevTasks) =>
-        prevTasks.map((t) => (t.id === taskId ? updatedTask : t))
+      setTasks((prev) =>
+        prev.map((t) => (t.id === taskId ? updatedTask : t))
       );
     } catch (err) {
-      // Falls etwas schiefgeht, Fehlermeldung anzeigen
-      setError(err.message);
+      console.error(err);
+      setError(err.message || "Fehler beim Ändern des Status");
     }
   };
 
-  // ---------- NEU: NEUE TASK ERSTELLEN (FORMULAR) ----------
-
-  // formData enthält ein Objekt:
-  // { title: "...", description: "...", status: "...", priority: "..." }
+  // Neue Task erstellen
   const handleCreateTask = async (formData) => {
     try {
-      setError("");        // alte Fehlermeldung löschen
-      setIsCreating(true); // wir sind gerade am Erstellen → Button deaktivieren
+      setError("");
+      setIsCreating(true);
 
-      // 1) Neue Task an das Backend senden (POST /tasks)
       const created = await createTask(formData);
+      console.log("Vom Backend zurück:", created);
 
-      // 2) Neue Task in unsere vorhandene Liste einfügen
-      // [...prev, created] = alle alten Tasks + die neue hintendran
       setTasks((prev) => [...prev, created]);
     } catch (err) {
-      setError(err.message);
+      console.error(err);
+      setError(err.message || "Fehler beim Erstellen der Task");
     } finally {
-      // Egal ob Fehler oder Erfolg → Erstellen ist fertig
       setIsCreating(false);
     }
   };
 
-  // ---------- FALL: WIR LADEN NOCH ----------
-
-  // Solange loading === true ist, zeigen wir nur einen einfachen Text
   if (loading) {
     return <div className="page-wrapper">Loading tasks...</div>;
   }
 
-  // ---------- HAUPTRENDER DER APP ----------
-
   return (
     <div className="page-wrapper">
-      {/* Kopfbereich oben */}
       <header className="page-header">
         <h1>Task Manager – React Kanban</h1>
-        <p className="page-subtitle">
-          Ein einfaches Kanban-Board, Status per Dropdown änderbar, Priority als
-          Farbe.
-        </p>
+
+        {selectedDate ? (
+          <p className="page-subtitle">
+            To-Do-Liste für den{" "}
+            {new Date(selectedDate).toLocaleDateString("de-DE")}
+          </p>
+        ) : (
+          <p className="page-subtitle">
+            Alle Tasks – kein bestimmter Tag ausgewählt.
+          </p>
+        )}
       </header>
 
-      {/* Fehlermeldung anzeigen, falls eine vorhanden ist */}
       {error && <p className="error-text">Error: {error}</p>}
 
-      {/* NEU: Formular zum Erstellen neuer Tasks */}
-      {/* onCreate → sagt dem Formular, welche Funktion es aufrufen soll, wenn man auf "Task erstellen" klickt */}
-      {/* isSubmitting → sagt dem Formular, ob der Button gerade disabled sein soll */}
-      <NewTaskForm onCreate={handleCreateTask} isSubmitting={isCreating} />
+      {/* Formular → bekommt selectedDate als initialDate */}
+      <NewTaskForm
+        onCreate={handleCreateTask}
+        isSubmitting={isCreating}
+        initialDate={selectedDate}
+      />
 
-      {/* Kanban-Board mit 3 Spalten */}
+      {/* Kanban-Spalten */}
       <section className="board">
         <KanbanColumn
           title="To Do"
-          tasks={tasksByStatus("To Do")}        // nur Tasks mit Status "To Do"
-          onStatusChange={handleStatusChange}  // Funktion zum Status ändern weitergeben
+          tasks={tasksByStatus("To Do")}
+          onStatusChange={handleStatusChange}
         />
         <KanbanColumn
           title="In Progress"
@@ -178,6 +227,41 @@ function App() {
   );
 }
 
+//======================================
+// NEUE App-Komponente: kümmert sich NUR 
+// um die Routen
+//======================================
+function App() {
+  return (
+    <>
+      {/* 
+        Routes = sagt React, welche Seite wann angezeigt wird 
+      */}
+      <Routes>
+
+        {/* 
+          Wenn der User http://localhost:5173/ öffnet
+          → Kalender anzeigen
+        */}
+        <Route path="/" element={<CalendarPage />} />
+
+        {/* 
+          Wenn der User http://localhost:5173/board öffnet
+          → Kanban Board anzeigen
+        */}
+        <Route path="/board" element={<KanbanPage />} />
+      </Routes>
+    </>
+  );
+}
+
+// -----------------------------------------
+// Wichtig: jetzt exportieren wir DIESE App()
+// nicht mehr KanbanPage!
+// -----------------------------------------
+export default App;   // ⭐ NUR DIESER DARF BLEIBEN ⭐
+
+
 // ======================================
 // NEU: Formular-Komponente zum Erstellen
 // einer neuen Task
@@ -186,75 +270,78 @@ function App() {
 // Props:
 // onCreate     = Funktion aus App, die aufgerufen wird, wenn das Formular abgeschickt wird
 // isSubmitting = true/false, ob gerade an das Backend gesendet wird
-function NewTaskForm({ onCreate, isSubmitting }) {
-  // ---------- LOKALER STATE NUR FÜR DAS FORMULAR ----------
-
+// ======================================
+// Formular-Komponente für neue Tasks
+// ======================================
+function NewTaskForm({ onCreate, isSubmitting, initialDate }) {
   // Titel-Feld
   const [title, setTitle] = useState("");
-
-  // Beschreibung-Feld
+  // Beschreibung
   const [description, setDescription] = useState("");
-
-  // Status-Auswahl (Dropdown), Standardwert: "To Do"
+  // Status-Dropdown
   const [status, setStatus] = useState("To Do");
-
-  // Priority-Auswahl (Dropdown), Standardwert: "high"
+  // Priority-Dropdown
   const [priority, setPriority] = useState("high");
+  // Deadline (datetime-local)
+  const [dueDate, setDueDate] = useState("");
 
-  // Wird aufgerufen, wenn der User im Formular auf "Task erstellen" klickt
   const handleSubmit = (event) => {
-    // Verhindert, dass der Browser die Seite neu lädt
     event.preventDefault();
 
-    // Mini-Validierung:
-    // Wenn der Titel leer ist, zeigen wir eine Alert-Meldung
     if (!title.trim()) {
       alert("Bitte Titel eingeben.");
       return;
     }
 
-    // Objekt mit den neuen Taskdaten zusammenbauen
+    // 🔹 Payload fürs Backend bauen
     const newTaskData = {
       title: title.trim(),
       description: description.trim(),
-      status,    // aktueller Status-Wert aus dem State
-      priority,  // aktuelle Priority
+      status,
+      priority,
+      // kann leer sein → Backend darf das zulassen
+      due_date: dueDate || null,
+      // Arbeitstag aus der URL (Kalender-Tag)
+      work_date: initialDate || null,
     };
 
-    // Eltern-Komponente (App) informieren:
-    // App ruft dann handleCreateTask(newTaskData) auf
-    onCreate(newTaskData);
+    console.log("Sende neuen Task:", newTaskData);
 
-    // Felder im Formular zurücksetzen
+    // Nur ausführen, wenn eine Funktion übergeben wurde
+    if (typeof onCreate === "function") {
+      onCreate(newTaskData);
+    } else {
+      console.error("❌ onCreate wurde nicht als Funktion übergeben!");
+    }
+
+    // Felder zurücksetzen
     setTitle("");
     setDescription("");
     setStatus("To Do");
     setPriority("high");
+    setDueDate("");
   };
-
-  // ---------- JSX (HTML-ähnliche Struktur) FÜR DAS FORMULAR ----------
 
   return (
     <section className="new-task-card">
       <h2 className="new-task-title">Neue Task erstellen</h2>
 
-      {/* onSubmit = welche Funktion soll aufgerufen werden, wenn das Formular abgeschickt wird */}
       <form className="new-task-form" onSubmit={handleSubmit}>
-        {/* Titel-Feld */}
+        {/* Titel */}
         <div className="form-row">
           <label className="form-label">
             Titel *
             <input
               className="form-input"
               type="text"
-              value={title}                       // Wert kommt aus dem State
-              onChange={(e) => setTitle(e.target.value)} // bei Eingabe → State aktualisieren
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
               placeholder="z.B. Präsentation vorbereiten"
             />
           </label>
         </div>
 
-        {/* Beschreibung-Feld */}
+        {/* Beschreibung */}
         <div className="form-row">
           <label className="form-label">
             Beschreibung
@@ -268,9 +355,8 @@ function NewTaskForm({ onCreate, isSubmitting }) {
           </label>
         </div>
 
-        {/* Status- und Priority-Auswahl nebeneinander */}
+        {/* Status + Priority nebeneinander */}
         <div className="form-row form-row-inline">
-          {/* Status-Dropdown */}
           <label className="form-label">
             Status
             <select
@@ -284,7 +370,6 @@ function NewTaskForm({ onCreate, isSubmitting }) {
             </select>
           </label>
 
-          {/* Priority-Dropdown */}
           <label className="form-label">
             Priority
             <select
@@ -299,10 +384,26 @@ function NewTaskForm({ onCreate, isSubmitting }) {
           </label>
         </div>
 
-        {/* Button zum Erstellen */}
+        {/* Deadline-Feld */}
         <div className="form-row">
-          <button className="form-button" type="submit" disabled={isSubmitting}>
-            {/* Text ändert sich je nach isSubmitting */}
+          <label className="form-label">
+            Deadline
+            <input
+              className="form-input"
+              type="datetime-local"
+              value={dueDate}
+              onChange={(e) => setDueDate(e.target.value)}
+            />
+          </label>
+        </div>
+
+        {/* Button */}
+        <div className="form-row">
+          <button
+            className="form-button"
+            type="submit"
+            disabled={isSubmitting}
+          >
             {isSubmitting ? "Wird erstellt..." : "Task erstellen"}
           </button>
         </div>
@@ -392,5 +493,3 @@ function TaskCard({ task, onStatusChange }) {
   );
 }
 
-// Diese Komponente ist die "Hauptkomponente" und wird in main.jsx gerendert
-export default App;

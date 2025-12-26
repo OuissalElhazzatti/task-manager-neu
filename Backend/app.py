@@ -4,6 +4,7 @@ from sqlalchemy import case
 from datetime import datetime,timedelta
 from flask_cors import CORS
 
+
 ALLOWED_STATUSES = ["To Do", "In Progress", "Done"]
 ALLOWED_PRIORITIES = ["low", "medium", "high"]
 
@@ -17,6 +18,32 @@ app.config["SQLALCHEMY_DATABASE_URI"] = "sqlite:///tasks.db"
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 
 db.init_app(app)
+
+@app.route("/debug_create_task")
+def debug_create_task():
+    # 1) Irgendeinen User sicherstellen (wegen user_id NOT NULL)
+    user = User.query.first()
+    if not user:
+        user = User(username="demo_user", email="demo@example.com")
+        db.session.add(user)
+        db.session.commit()
+
+    # 2) Eine einfache Test-Task erstellen (ohne due_date-Parsing)
+    test_task = Task(
+        title="Backend Test Task",
+        description="Nur zum Testen",
+        status="To Do",
+        priority="medium",
+        work_date="2025-12-26",
+        due_date=None,
+        user_id=user.id,   # WICHTIG!
+        category_id=None,
+    )
+
+    db.session.add(test_task)
+    db.session.commit()
+
+    return jsonify(test_task.to_dict()), 201
 
 
 
@@ -106,41 +133,48 @@ def get_tasks():
 @app.route("/tasks", methods=["POST"])
 def create_task():
     data = request.get_json()
-    
-    print("DEBUG: NEUE create_task Version – user_id = 1")  # 👈 hinzufügen
 
+    title = data.get("title")
+    description = data.get("description", "")
     status = data.get("status", "To Do")
-    if status not in ALLOWED_STATUSES:
-        return jsonify({"error": "Invalid status"}), 400
+    priority = data.get("priority", "medium")
+    work_date = data.get("work_date")  # z.B. "2025-12-26"
+    due_date_str = data.get("due_date") or data.get("deadline")  # je nach Frontend-Feld
 
-    priority = data.get("priority", "medium").lower()
-    if priority not in ALLOWED_PRIORITIES:
-        return jsonify({"error": "Invalid priority, allowed: low, medium, high"}), 400
+    # 🔹 1. USER-ID setzen (automatisch)
+    user = User.query.first()
+    if not user:
+      user = User(username="default_user", email="default@example.com")
+      db.session.add(user)
+      db.session.commit()
 
-    # due_date (optional)
-    due_date_str = data.get("due_date")
+    # 🔹 2. Datum sicher parsen
     due_date = None
     if due_date_str:
         try:
+            # Wenn dein Frontend z.B. "2025-12-31T10:00" schickt:
             due_date = datetime.fromisoformat(due_date_str)
-        except ValueError:
-            return jsonify({"error": "due_date must be ISO format, e.g. 2025-11-30T18:00:00"}), 400
+        except Exception as e:
+            print("Fehler beim Parsen von due_date:", e)
+            # notfalls ignorieren
+            due_date = None
 
-    task = Task(
-        title=data.get("title", ""),
-        description=data.get("description", ""),
+    # 🔹 3. Task-Objekt erstellen
+    new_task = Task(
+        title=title,
+        description=description,
         status=status,
         priority=priority,
+        work_date=work_date,
         due_date=due_date,
-        user_id=1,                      # ✅ feste User-ID
-        category_id=data.get("category_id")
+        user_id=user.id,   # <- ganz wichtig
+        # category_id kannst du später ergänzen
     )
 
-    db.session.add(task)
+    db.session.add(new_task)
     db.session.commit()
-    return jsonify(task.to_dict()), 201
 
-
+    return jsonify(new_task.to_dict()), 201
 # ✔ Task bearbeiten (Titel, Beschreibung, Status, Kategorie)
 @app.route("/tasks/<int:task_id>", methods=["PUT"])
 def update_task(task_id):
@@ -161,6 +195,17 @@ def update_task(task_id):
         if new_priority not in ALLOWED_PRIORITIES:
             return jsonify({"error": "Invalid priority, allowed: low, medium, high"}), 400
         task.priority = new_priority
+    
+    # NEU: work_date ändern / löschen
+    if "work_date" in data:
+        wd_str = data["work_date"]
+        if wd_str in (None, "", "null"):
+            task.work_date = None
+        else:
+            try:
+                task.work_date = datetime.fromisoformat(wd_str).date()
+            except ValueError:
+                return jsonify({"error": "work_date must be ISO date"}), 400
 
     # 👉 NEU: due_date ändern / löschen
     if "due_date" in data:

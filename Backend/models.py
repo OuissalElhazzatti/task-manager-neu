@@ -29,33 +29,28 @@ class Task(db.Model):
 
     id = db.Column(db.Integer, primary_key=True)
     title = db.Column(db.String(200), nullable=False)
-    description = db.Column(db.Text)
+    description = db.Column(db.Text, default="")
     status = db.Column(db.String(50), default="To Do")
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
-    priority = db.Column(db.String(10), default="medium", nullable=False)
-    due_date = db.Column(db.DateTime, nullable=True)
+    priority = db.Column(db.String(20), default="medium")
+
+    # work_date = Tag, an dem du daran arbeitest (String "YYYY-MM-DD" ist ok)
+    work_date = db.Column(db.String(10))  
+
+    # due_date = Deadline (kann DateTime sein, wie du es schon hattest)
+    due_date = db.Column(db.DateTime)
 
     user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False)
-    category_id = db.Column(db.Integer, db.ForeignKey("categories.id"), nullable=True)
+    category_id = db.Column(db.Integer, db.ForeignKey("categories.id"))
 
     def to_dict(self):
-        # 👉 Überfällig-Berechnung
-        from datetime import datetime
-        is_overdue = False
-        if self.due_date is not None and self.status != "Done":
-            # Vergleich in UTC
-            if self.due_date < datetime.utcnow():
-                is_overdue = True
-
         return {
             "id": self.id,
             "title": self.title,
             "description": self.description,
             "status": self.status,
-            "created_at": self.created_at.isoformat(),
+            "priority": self.priority,
+            "work_date": self.work_date,
+            "due_date": self.due_date.isoformat() if self.due_date else None,
             "user_id": self.user_id,
             "category_id": self.category_id,
-            "priority": self.priority,
-            "due_date": self.due_date.isoformat() if self.due_date else None,
-            "is_overdue": is_overdue,
         }
