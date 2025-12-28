@@ -125,6 +125,7 @@ function KanbanPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [isCreating, setIsCreating] = useState(false);
+  const [editingTask, setEditingTask] = useState(null);
 
   // Beim Laden Tasks holen
   useEffect(() => {
@@ -194,6 +195,35 @@ function KanbanPage() {
     }
   };
 
+  // Task bearbeiten: Modal öffnen
+  const handleStartEditTask = (task) => {
+    setEditingTask(task);
+  };
+
+  // Edit-Modal schließen
+  const handleCloseEdit = () => {
+    setEditingTask(null);
+  };
+
+  // Änderungen speichern
+  const handleSaveEditTask = async (updatedFields) => {
+    try {
+      setError("");
+      // Backend-Update
+      const updated = await updateTask(editingTask.id, updatedFields);
+
+      // State aktualisieren
+      setTasks((prev) =>
+        prev.map((t) => (t.id === editingTask.id ? updated : t))
+      );
+
+      setEditingTask(null);
+    } catch (err) {
+      console.error(err);
+      setError(err.message || "Fehler beim Bearbeiten der Task");
+    }
+  };
+
   // Neue Task erstellen
   const handleCreateTask = async (formData) => {
     try {
@@ -249,21 +279,30 @@ function KanbanPage() {
           tasks={tasksByStatus("To Do")}
           onStatusChange={handleStatusChange}
           onDeleteTask={handleDeleteTask}
+          onEditTask={handleStartEditTask}
         />
         <KanbanColumn
           title="In Progress"
           tasks={tasksByStatus("In Progress")}
           onStatusChange={handleStatusChange}
           onDeleteTask={handleDeleteTask}
+          onEditTask={handleStartEditTask}
         />
         <KanbanColumn
           title="Done"
           tasks={tasksByStatus("Done")}
           onStatusChange={handleStatusChange}
           onDeleteTask={handleDeleteTask}
+          onEditTask={handleStartEditTask}
         />
       </section>
-
+      
+      {/* Edit-Modal, wenn eine Task ausgewählt ist */}
+      <EditTaskModal
+        task={editingTask}
+        onClose={handleCloseEdit}
+        onSave={handleSaveEditTask}
+      />  
     </div>
   );
 }
@@ -492,7 +531,7 @@ function NewTaskForm({ onCreate, isSubmitting, initialDate }) {
 // Spalte im Kanban-Board
 // ======================================
 
-function KanbanColumn({ title, tasks, onStatusChange, onDeleteTask }) {
+function KanbanColumn({ title, tasks, onStatusChange, onDeleteTask, onEditTask }) {
   return (
     <div className="column">
       <h2 className="column-title">{title}</h2>
@@ -507,6 +546,7 @@ function KanbanColumn({ title, tasks, onStatusChange, onDeleteTask }) {
               task={task}
               onStatusChange={onStatusChange}
               onDeleteTask={onDeleteTask}
+              onEditTask={onEditTask}
             />
           ))}
         </div>
@@ -515,11 +555,166 @@ function KanbanColumn({ title, tasks, onStatusChange, onDeleteTask }) {
   );
 }
 
+
+// ======================================
+// Edit-Modal für bestehende Tasks
+// ======================================
+function EditTaskModal({ task, onClose, onSave }) {
+  if (!task) return null;
+
+  const [title, setTitle] = useState(task.title || "");
+  const [description, setDescription] = useState(task.description || "");
+  const [status, setStatus] = useState(task.status || "To Do");
+  const [priority, setPriority] = useState(task.priority || "high");
+
+  // Deadline
+  const initialDue =
+    task.due_date && task.due_date.length >= 16
+      ? task.due_date.slice(0, 16)
+      : "";
+  const [dueDate, setDueDate] = useState(initialDue);
+
+  // NEU: Repeat Days (String → Array)
+  const initialRepeat =
+    (task.repeat_days || "")
+      .split(",")
+      .map((d) => d.trim())
+      .filter(Boolean); // z.B. ["MON","SAT"]
+  const [repeatDays, setRepeatDays] = useState(initialRepeat);
+
+  const handleSubmit = (e) => {
+    e.preventDefault();
+
+    onSave({
+      title: title.trim(),
+      description: description.trim(),
+      status,
+      priority,
+      due_date: dueDate || null,
+      repeat_days: repeatDays,
+    });
+  };
+
+  return (
+    <div className="modal-backdrop">
+      <div className="modal-card">
+        <h2>Task bearbeiten</h2>
+
+        <form onSubmit={handleSubmit} className="edit-task-form">
+          <label className="form-label">
+            Titel
+            <input
+              className="form-input"
+              type="text"
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+            />
+          </label>
+
+          <label className="form-label">
+            Beschreibung
+            <textarea
+              className="form-textarea"
+              rows={3}
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+            />
+          </label>
+
+          <div className="form-row form-row-inline">
+            <label className="form-label">
+              Status
+              <select
+                className="form-select"
+                value={status}
+                onChange={(e) => setStatus(e.target.value)}
+              >
+                <option value="To Do">To Do</option>
+                <option value="In Progress">In Progress</option>
+                <option value="Done">Done</option>
+              </select>
+            </label>
+
+            <label className="form-label">
+              Priority
+              <select
+                className="form-select"
+                value={priority}
+                onChange={(e) => setPriority(e.target.value)}
+              >
+                <option value="high">High</option>
+                <option value="medium">Medium</option>
+                <option value="low">Low</option>
+              </select>
+            </label>
+          </div>
+
+          <label className="form-label">
+            Deadline
+            <input
+              className="form-input"
+              type="datetime-local"
+              value={dueDate}
+              onChange={(e) => setDueDate(e.target.value)}
+            />
+          </label>
+
+          {/* NEU: Wiederholen an bestimmten Tagen */}
+          <div className="form-row">
+            <span className="form-label">Wiederholen an:</span>
+            <div className="repeat-days">
+              {[
+                { code: "MON", label: "Mo" },
+                { code: "TUE", label: "Di" },
+                { code: "WED", label: "Mi" },
+                { code: "THU", label: "Do" },
+                { code: "FRI", label: "Fr" },
+                { code: "SAT", label: "Sa" },
+                { code: "SUN", label: "So" },
+              ].map((day) => (
+                <label key={day.code} className="repeat-day-option">
+                  <input
+                    type="checkbox"
+                    checked={repeatDays.includes(day.code)}
+                    onChange={() => {
+                      setRepeatDays((prev) =>
+                        prev.includes(day.code)
+                          ? prev.filter((d) => d !== day.code)
+                          : [...prev, day.code]
+                      );
+                    }}
+                  />
+                  {day.label}
+                </label>
+              ))}
+            </div>
+          </div>
+
+          <div className="form-row form-row-inline modal-actions">
+            <button
+              type="button"
+              className="form-button secondary"
+              onClick={onClose}
+            >
+              Abbrechen
+            </button>
+            <button type="submit" className="form-button">
+              Speichern
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+
+
 // ======================================
 // Task-Karte (einzelne Aufgabe im Board)
 // ======================================
 
-function TaskCard({ task, onStatusChange, onDeleteTask }) {
+function TaskCard({ task, onStatusChange, onDeleteTask, onEditTask }) {
 
   const deadlineText = task.due_date
     ? new Date(task.due_date).toLocaleString("de-DE")
@@ -560,7 +755,7 @@ function TaskCard({ task, onStatusChange, onDeleteTask }) {
         <button
           type="button"
           className="icon-button"
-          onClick={() => alert("Bearbeiten kommt später 😊")}
+          onClick={() => onEditTask && onEditTask(task)}
         >
           ✏️
         </button>

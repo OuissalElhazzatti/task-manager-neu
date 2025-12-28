@@ -58,3 +58,124 @@ body {
   font-size: 0.9rem;
   padding: 0;
 }  
+
+/* --------------------------------------------------- ✏️------------------------------------------------------------ */
+
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 50;
+}
+
+.modal-card {
+  background: white;
+  padding: 1.5rem;
+  border-radius: 0.75rem;
+  max-width: 480px;
+  width: 100%;
+  box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+}
+
+.modal-actions {
+  justify-content: flex-end;
+  gap: 0.75rem;
+}
+
+.form-button.secondary {
+  background: #ddd;
+  color: #333;
+}
+
+/*------------------------------------------------------------*/
+
+
+/* ===========================
+   DUNKLER HINTERGRUND HINTER MODAL
+   sorgt dafür, dass der Rest der Seite verdunkelt wird
+   =========================== */
+.modal-backdrop {
+  position: fixed;
+  inset: 0; /* oben + unten + links + rechts = 0 */
+  background: rgba(0, 0, 0, 0.45); /* halb transparent Schwarz */
+  display: flex;
+  align-items: center;  /* Modal vertikal zentrieren */
+  justify-content: center; /* Modal horizontal zentrieren */
+  z-index: 50; /* über allen anderen Elementen */
+}
+
+/* ===========================
+   MODAL SELBST (weiße Box in der Mitte)
+   hell, gute Lesbarkeit, leichte Rundung, Schatten
+   =========================== */
+.modal-card {
+  background: #f9fafb;   /* sehr helles Grau statt Weiß → angenehmer für Augen */
+  color: #111827;        /* fast schwarz → sehr gut lesbar */
+  padding: 1.5rem;
+  border-radius: 0.75rem; /* abgerundete Ecken */
+  max-width: 520px;  /* maximale Breite */
+  width: 100%;       /* aber dynamisch */
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3); /* schöner Schatten */
+}
+
+/* ===========================
+   FORM FELDER IM MODAL
+   hell, klare Umrandung, gute Schrift
+   =========================== */
+.modal-card .form-input,
+.modal-card .form-textarea,
+.modal-card .form-select {
+  background: #ffffff; /* Weiß */
+  color: #111827;      /* dunkle Schrift */
+  border: 1px solid #d1d5db; /* leichte Umrandung */
+}
+
+/* ===========================
+   FOKUS EFFEKT → Wenn der User klickt
+   blaues Highlight wie professionelle Apps
+   =========================== */
+.modal-card .form-input:focus,
+.modal-card .form-textarea:focus,
+.modal-card .form-select:focus {
+  outline: none;
+  border-color: #3b82f6; /* Blau */
+  box-shadow: 0 0 0 1px #3b82f6;
+}
+
+/* ===========================
+   REPEAT DAYS (Mo Di Mi …)
+   schön nebeneinander, mit Abstand
+   =========================== */
+.repeat-days {
+  display: flex;
+  flex-wrap: wrap; /* wenn kein Platz → nächste Zeile */
+  gap: 0.5rem;
+  margin-top: 0.25rem;
+}
+
+/* einzelner Tag (checkbox + label) */
+.repeat-day-option {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  font-size: 0.85rem;
+}
+
+/* ===========================
+   BUTTONS IM MODAL
+   rechtsbündig + Abstand
+   =========================== */
+.modal-actions {
+  justify-content: flex-end;
+  gap: 0.75rem;
+}
+
+/* sekundärer Button = grau (Abbrechen) */
+.form-button.secondary {
+  background: #e5e7eb;
+  color: #111827;
+}
+
