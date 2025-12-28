@@ -29,7 +29,7 @@ import { fetchTasks, updateTask, createTask, deleteTask } from "./api";
 // KALENDER-SEITE (Startseite "/")
 // ===============================
 function CalendarPage() {
-  const navigate = useNavigate();          // zum Wechseln auf /board
+  const navigate = useNavigate();
   const [viewMode, setViewMode] = useState("week"); // "week" oder "month"
 
   const today = new Date();
@@ -50,50 +50,84 @@ function CalendarPage() {
   const daysToShow = viewMode === "week" ? weekDays : monthDays;
 
   const handleDayClick = (date) => {
-  // Datum in Form "YYYY-MM-DD" holen
-  const isoDate = date.toISOString().split("T")[0];
-
-  // zur Board-Seite navigieren und Datum als Query-Parameter mitschicken
-  // z.B. /board?date=2025-12-25
-  navigate(`/board?date=${isoDate}`);
-};
+    const isoDate = date.toISOString().split("T")[0];
+    navigate(`/board?date=${isoDate}`);
+  };
 
   return (
-    <div className="calendar-page">
-      <h1>📅 Dein Task Kalender</h1>
+    <div className="app-shell">
+      {/* Seitenleiste links */}
+      <aside className="sidebar">
+        <div className="sidebar-header">
+          <span className="sidebar-logo">📅</span>
+          <span className="sidebar-title">Task Manager</span>
+        </div>
 
-      {/* Umschalter Woche / Monat */}
-      <div className="calendar-toggle">
-        <button
-          className={viewMode === "week" ? "active" : ""}
-          onClick={() => setViewMode("week")}
-        >
-          Woche
-        </button>
-        <button
-          className={viewMode === "month" ? "active" : ""}
-          onClick={() => setViewMode("month")}
-        >
-          Monat
-        </button>
-      </div>
-
-      {/* Grid mit Tagen */}
-      <div className="calendar-grid">
-        {daysToShow.map((d, index) => (
+        <nav className="sidebar-nav">
           <button
-            key={index}
-            className="calendar-day"
-            onClick={() => handleDayClick(d)}
+            className="sidebar-link active"
+            onClick={() => navigate("/")}
           >
-            {d.toLocaleDateString("de-DE", {
-              weekday: viewMode === "week" ? "short" : undefined,
-              day: "2-digit",
-              month: "2-digit",
-            })}
+            Home
           </button>
-        ))}
-      </div>
+          <button
+            className="sidebar-link"
+            onClick={() => setViewMode("week")}
+          >
+            Woche
+          </button>
+          <button
+            className="sidebar-link"
+            onClick={() => setViewMode("month")}
+          >
+            Monat
+          </button>
+          <button
+            className="sidebar-link"
+            onClick={() => navigate("/board")}
+          >
+            Board
+          </button>
+        </nav>
+      </aside>
+
+      {/* Hauptbereich rechts */}
+      <main className="calendar-main">
+        <div className="calendar-page">
+          <h1>
+            <span role="img" aria-label="calendar">
+              📅
+            </span>{" "}
+            Dein Task Kalender
+          </h1>
+
+          {/* kleine Info, welcher Modus */}
+          <p className="calendar-subtitle">
+            Ansicht: {viewMode === "week" ? "Woche" : "Monat"}
+          </p>
+
+          {/* Kreise für Tage */}
+          <div className="calendar-circle-grid">
+            {daysToShow.map((d, index) => (
+              <button
+                key={index}
+                className="calendar-day-circle"
+                onClick={() => handleDayClick(d)}
+              >
+                <span className="circle-day-number">
+                  {d.toLocaleDateString("de-DE", { day: "2-digit" })}
+                </span>
+                <span className="circle-day-label">
+                  {d.toLocaleDateString("de-DE", {
+                    weekday: "short",
+                    month: "2-digit",
+                  })}
+                </span>
+              </button>
+            ))}
+          </div>
+        </div>
+      </main>
     </div>
   );
 }
@@ -184,10 +218,13 @@ function KanbanPage() {
 
   // Task löschen
   const handleDeleteTask = async (taskId) => {
+    const sicher = window.confirm("Willst du diese Task wirklich löschen?");
+
+    if (!sicher) return;
+
     try {
       setError("");
       await deleteTask(taskId);
-      // lokal aus dem State entfernen
       setTasks((prev) => prev.filter((t) => t.id !== taskId));
     } catch (err) {
       console.error(err);

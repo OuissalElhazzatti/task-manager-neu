@@ -179,3 +179,222 @@ body {
   color: #111827;
 }
 
+/*---------------------------------------------------------------------------------------------------------------------*/
+
+
+/* ============================
+   BESSERE LESBARKEIT GESAMTE SEITE
+   ============================ */
+body {
+  background: #f3f4f6;
+  color: #111827;
+  font-family: system-ui, Arial, sans-serif;
+}
+
+/* ============================
+   TASK-KARTEN SCHÖNER
+   ============================ */
+.task-card {
+  background: white;
+  border-radius: 10px;
+  padding: 12px;
+  border: 1px solid #e5e7eb;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.08);
+  position: relative;
+}
+
+/* Titel deutlich */
+.task-title {
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: #111827;
+}
+
+/* Beschreibung lesbarer */
+.task-description {
+  margin-top: 4px;
+  color: #374151;
+}
+
+/* Deadline sichtbar */
+.task-deadline {
+  margin-top: 6px;
+  font-size: 0.9rem;
+  color: #2563eb;
+}
+
+/* ============================
+   PRIORITY PUNKTE
+   ============================ */
+.priority-dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+}
+
+.priority-dot-high {
+  background: #dc2626;
+}
+
+.priority-dot-medium {
+  background: #f59e0b;
+}
+
+.priority-dot-low {
+  background: #16a34a;
+}
+
+/* ============================
+   OPERATION ICONS (edit / delete)
+   ============================ */
+.task-actions {
+  position: absolute;
+  top: 6px;
+  right: 8px;
+  display: flex;
+  gap: 8px;
+  opacity: 0;
+  transition: 0.2s;
+}
+
+.task-card:hover .task-actions {
+  opacity: 1;
+}
+
+.icon-button {
+  background: #e5e7eb;
+  border-radius: 6px;
+  border: none;
+  padding: 4px 6px;
+  cursor: pointer;
+  font-size: 14px;
+}
+
+.icon-button:hover {
+  background: #d1d5db;
+}
+
+/*----------------------------------------kalender seite styling------------------------------------------------------*/
+
+
+/* ==================================
+   KALENDER-SEITE STYLING
+   ================================== */
+
+.app-shell {
+  display: flex;
+  min-height: 100vh;
+  background: #f3f4f6; /* helles Grau */
+}
+
+/* Sidebar links */
+.sidebar {
+  width: 220px;
+  background: #ffffff;
+  border-right: 1px solid #e5e7eb;
+  padding: 16px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.sidebar-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.sidebar-logo {
+  font-size: 1.5rem;
+}
+
+.sidebar-title {
+  font-weight: 600;
+  font-size: 1rem;
+}
+
+.sidebar-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.sidebar-link {
+  text-align: left;
+  background: transparent;
+  border: none;
+  padding: 6px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.95rem;
+  color: #374151;
+}
+
+.sidebar-link:hover {
+  background: #e5e7eb;
+}
+
+.sidebar-link.active {
+  background: #2563eb;
+  color: white;
+}
+
+/* Hauptbereich rechts */
+.calendar-main {
+  flex: 1;
+  padding: 32px 40px;
+}
+
+/* ==================================
+   KALENDER-INHALT
+   ================================== */
+.calendar-page h1 {
+  font-size: 1.8rem;
+  font-weight: 700;
+  margin-bottom: 8px;
+  color: #111827;
+}
+
+.calendar-subtitle {
+  margin-bottom: 20px;
+  color: #6b7280;
+}
+
+/* Grid mit Kreisen */
+.calendar-circle-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+/* einzelner Tag als Kreis */
+.calendar-day-circle {
+  width: 80px;
+  height: 80px;
+  border-radius: 999px; /* macht Kreis */
+  border: 1px solid #d1d5db;
+  background: #ffffff;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  cursor: pointer;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+}
+
+.calendar-day-circle:hover {
+  border-color: #2563eb;
+  box-shadow: 0 3px 8px rgba(37,99,235,0.25);
+}
+
+.circle-day-number {
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: #111827;
+}
+
+.circle-day-label {
+  font-size: 0.75rem;
+  color: #6b7280;
+}
