@@ -345,6 +345,13 @@ body {
   padding: 32px 40px;
 }
 
+
+.board-main {
+  flex: 1;
+  padding: 32px 40px;
+  background: #f3f4f6; /* gleiche Hintergrundfarbe wie Kalender */
+}
+
 /* ==================================
    KALENDER-INHALT
    ================================== */

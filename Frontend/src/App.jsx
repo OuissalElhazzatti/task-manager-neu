@@ -139,16 +139,13 @@ function CalendarPage() {
 function KanbanPage() {
   // Datum aus der URL, z.B. /board?date=2025-12-26
   const [searchParams] = useSearchParams();
+  const navigate = useNavigate();
   const selectedDate = searchParams.get("date"); // string oder null
 
   // Hilfsfunktion: macht aus einem Datum (YYYY-MM-DD) ein Kürzel wie "MON", "TUE", ...
   const getWeekdayCode = (dateStr) => {
     if (!dateStr) return null;
     const d = new Date(dateStr);
-    if (isNaN(d.getTime())) {
-      console.warn("Ungültiges Datum in getWeekdayCode:", dateStr);
-      return null;
-    }
     const day = d.getDay(); // 0=So, 1=Mo, ...
     const map = ["SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"];
     return map[day];
@@ -180,7 +177,7 @@ function KanbanPage() {
     loadData();
   }, []);
 
-  // Tasks nach Status + Arbeitstag / repeat_days filtern
+  // Tasks nach Status + Arbeitstag filtern
   const tasksByStatus = (status) =>
     tasks.filter((task) => {
       if (!selectedDate) {
@@ -188,6 +185,7 @@ function KanbanPage() {
         return task.status === status;
       }
 
+      // Wochentag des ausgewählten Datums (z.B. "MON")
       const weekdayCode = getWeekdayCode(selectedDate);
 
       // repeat_days vom Backend ist z.B. "MON,SAT" oder null
@@ -195,9 +193,12 @@ function KanbanPage() {
       const repeatList = repeatStr.split(",").filter(Boolean); // ["MON","SAT"]
 
       const matchesStatus = task.status === status;
+
+      // 1) Task gehört GENAU zu diesem Datum (normaler Task)
       const matchesWorkDate = task.work_date === selectedDate;
-      const matchesRepeat =
-        weekdayCode && repeatList.length > 0 && repeatList.includes(weekdayCode);
+
+      // 2) ODER Task ist eine Gewohnheit und heute ist einer seiner repeat_days
+      const matchesRepeat = repeatList.includes(weekdayCode);
 
       return matchesStatus && (matchesWorkDate || matchesRepeat);
     });
@@ -216,15 +217,15 @@ function KanbanPage() {
     }
   };
 
-  // Task löschen
+  // Task löschen (mit Bestätigung)
   const handleDeleteTask = async (taskId) => {
     const sicher = window.confirm("Willst du diese Task wirklich löschen?");
-
     if (!sicher) return;
 
     try {
       setError("");
       await deleteTask(taskId);
+      // lokal aus dem State entfernen
       setTasks((prev) => prev.filter((t) => t.id !== taskId));
     } catch (err) {
       console.error(err);
@@ -246,10 +247,8 @@ function KanbanPage() {
   const handleSaveEditTask = async (updatedFields) => {
     try {
       setError("");
-      // Backend-Update
       const updated = await updateTask(editingTask.id, updatedFields);
 
-      // State aktualisieren
       setTasks((prev) =>
         prev.map((t) => (t.id === editingTask.id ? updated : t))
       );
@@ -280,70 +279,118 @@ function KanbanPage() {
   };
 
   if (loading) {
-    return <div className="page-wrapper">Loading tasks...</div>;
+    return (
+      <div className="app-shell">
+        <aside className="sidebar">
+          <div className="sidebar-header">
+            <span className="sidebar-logo">📅</span>
+            <span className="sidebar-title">Task Manager</span>
+          </div>
+        </aside>
+        <main className="board-main">
+          <div className="page-wrapper">Loading tasks...</div>
+        </main>
+      </div>
+    );
   }
 
   return (
-    <div className="page-wrapper">
-      <header className="page-header">
-        <h1>Task Manager – React Kanban</h1>
+    <div className="app-shell">
+      {/* Sidebar links – wie auf der Startseite, aber "Board" aktiv */}
+      <aside className="sidebar">
+        <div className="sidebar-header">
+          <span className="sidebar-logo">📅</span>
+          <span className="sidebar-title">Task Manager</span>
+        </div>
 
-        {selectedDate ? (
-          <p className="page-subtitle">
-            To-Do-Liste für den{" "}
-            {new Date(selectedDate).toLocaleDateString("de-DE")}
-          </p>
-        ) : (
-          <p className="page-subtitle">
-            Alle Tasks – kein bestimmter Tag ausgewählt.
-          </p>
-        )}
-      </header>
+        <nav className="sidebar-nav">
+          <button
+            className="sidebar-link"
+            onClick={() => navigate("/")}
+          >
+            Home
+          </button>
+          <button
+            className="sidebar-link"
+            onClick={() => navigate("/")}
+          >
+            Woche
+          </button>
+          <button
+            className="sidebar-link"
+            onClick={() => navigate("/")}
+          >
+            Monat
+          </button>
+          <button
+            className="sidebar-link active"
+            onClick={() => navigate("/board")}
+          >
+            Board
+          </button>
+        </nav>
+      </aside>
 
-      {error && <p className="error-text">Error: {error}</p>}
+      {/* Hauptinhalt rechts: dein Kanban-Board */}
+      <main className="board-main">
+        <div className="page-wrapper">
+          <header className="page-header">
+            <h1>Task Manager – React Kanban</h1>
 
-      {/* Formular → bekommt selectedDate als initialDate */}
-      <NewTaskForm
-        onCreate={handleCreateTask}
-        isSubmitting={isCreating}
-        initialDate={selectedDate}
-      />
+            {selectedDate ? (
+              <p className="page-subtitle">
+                To-Do-Liste für den{" "}
+                {new Date(selectedDate).toLocaleDateString("de-DE")}
+              </p>
+            ) : (
+              <p className="page-subtitle">
+                Alle Tasks – kein bestimmter Tag ausgewählt.
+              </p>
+            )}
+          </header>
 
-      {/* Kanban-Spalten */}
-      <section className="board">
-        <KanbanColumn
-          title="To Do"
-          tasks={tasksByStatus("To Do")}
-          onStatusChange={handleStatusChange}
-          onDeleteTask={handleDeleteTask}
-          onEditTask={handleStartEditTask}
-        />
-        <KanbanColumn
-          title="In Progress"
-          tasks={tasksByStatus("In Progress")}
-          onStatusChange={handleStatusChange}
-          onDeleteTask={handleDeleteTask}
-          onEditTask={handleStartEditTask}
-        />
-        <KanbanColumn
-          title="Done"
-          tasks={tasksByStatus("Done")}
-          onStatusChange={handleStatusChange}
-          onDeleteTask={handleDeleteTask}
-          onEditTask={handleStartEditTask}
-        />
-      </section>
-      
-      {/* Edit-Modal, wenn eine Task ausgewählt ist */}
-      <EditTaskModal
-        task={editingTask}
-        onClose={handleCloseEdit}
-        onSave={handleSaveEditTask}
-      />  
+          {error && <p className="error-text">Error: {error}</p>}
+
+          <NewTaskForm
+            onCreate={handleCreateTask}
+            isSubmitting={isCreating}
+            initialDate={selectedDate}
+          />
+
+          <section className="board">
+            <KanbanColumn
+              title="To Do"
+              tasks={tasksByStatus("To Do")}
+              onStatusChange={handleStatusChange}
+              onDeleteTask={handleDeleteTask}
+              onEditTask={handleStartEditTask}
+            />
+            <KanbanColumn
+              title="In Progress"
+              tasks={tasksByStatus("In Progress")}
+              onStatusChange={handleStatusChange}
+              onDeleteTask={handleDeleteTask}
+              onEditTask={handleStartEditTask}
+            />
+            <KanbanColumn
+              title="Done"
+              tasks={tasksByStatus("Done")}
+              onStatusChange={handleStatusChange}
+              onDeleteTask={handleDeleteTask}
+              onEditTask={handleStartEditTask}
+            />
+          </section>
+
+          <EditTaskModal
+            task={editingTask}
+            onClose={handleCloseEdit}
+            onSave={handleSaveEditTask}
+          />
+        </div>
+      </main>
     </div>
   );
 }
-
 //======================================
 // NEUE App-Komponente: kümmert sich NUR 
 // um die Routen
