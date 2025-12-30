@@ -33,13 +33,16 @@ class Task(db.Model):
     status = db.Column(db.String(50), default="To Do")
     priority = db.Column(db.String(20), default="medium")
 
-    # work_date = Tag, an dem du daran arbeitest (String "YYYY-MM-DD" ist ok)
-    work_date = db.Column(db.String(10))  
+    # work_date = Tag, an dem du daran arbeitest (String "YYYY-MM-DD")
+    work_date = db.Column(db.String(10))
 
-    # due_date = Deadline (kann DateTime sein, wie du es schon hattest)
+    # due_date = Deadline (DateTime)
     due_date = db.Column(db.DateTime)
 
-    # NEU: Wiederholungstage als Text, z.B. "MON,SAT"
+    # 🔔 NEU: Erinnerungstermin
+    reminder_time = db.Column(db.DateTime)
+
+    # Wiederholungstage, z.B. "MON,TUE"
     repeat_days = db.Column(db.String(50))
 
     user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False)
@@ -54,6 +57,7 @@ class Task(db.Model):
             "priority": self.priority,
             "work_date": self.work_date,
             "due_date": self.due_date.isoformat() if self.due_date else None,
+            "reminder_time": self.reminder_time.isoformat() if self.reminder_time else None,
             "repeat_days": self.repeat_days,
             "user_id": self.user_id,
             "category_id": self.category_id,

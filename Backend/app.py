@@ -1,109 +1,73 @@
 from flask import Flask, jsonify, request
-from models import db, User, Task, Category
-from sqlalchemy import case
-from datetime import datetime,timedelta
 from flask_cors import CORS
+from datetime import datetime
+from sqlalchemy import case
 
+# 👉 eigene Models importieren
+from models import db, User, Task, Category
 
-ALLOWED_STATUSES = ["To Do", "In Progress", "Done"]
-ALLOWED_PRIORITIES = ["low", "medium", "high"]
-
+# =========================================
+# Flask-App & Datenbank konfigurieren
+# =========================================
 app = Flask(__name__)
 
-CORS(app)
-
-
-# Datenbank Konfiguration
+# SQLite-DB im Backend-Ordner
 app.config["SQLALCHEMY_DATABASE_URI"] = "sqlite:///tasks.db"
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 
 db.init_app(app)
+CORS(app)
 
-@app.route("/debug_create_task")
-def debug_create_task():
-    # 1) Irgendeinen User sicherstellen (wegen user_id NOT NULL)
+# beim Start Tabellen erstellen
+with app.app_context():
+    db.create_all()
+
+# erlaubte Status / Prioritäten
+ALLOWED_STATUSES = ["To Do", "In Progress", "Done"]
+ALLOWED_PRIORITIES = ["low", "medium", "high"]
+
+
+# =========================================
+# Hilfsfunktion: Default-User sicherstellen
+# =========================================
+def get_or_create_default_user():
     user = User.query.first()
     if not user:
         user = User(username="demo_user", email="demo@example.com")
         db.session.add(user)
         db.session.commit()
+    return user
 
-    # 2) Eine einfache Test-Task erstellen (ohne due_date-Parsing)
+
+# =========================================
+# Debug-Route zum Testen
+# =========================================
+@app.route("/debug_create_task")
+def debug_create_task():
+    user = get_or_create_default_user()
+
     test_task = Task(
         title="Backend Test Task",
         description="Nur zum Testen",
         status="To Do",
         priority="medium",
-        work_date="2025-12-26",
+        work_date="2025-12-28",
         due_date=None,
-        user_id=user.id,   # WICHTIG!
-        category_id=None,
+        reminder_time=None,
+        repeat_days=None,
+        user_id=user.id,
     )
-
     db.session.add(test_task)
     db.session.commit()
 
     return jsonify(test_task.to_dict()), 201
 
 
-
-@app.route("/")
-def home():
-    return "Backend läuft mit User, Task & Category Modellen 🎉"
-
-
-# =======================
-# USER ROUTEN
-# =======================
-
-@app.route("/users", methods=["GET"])
-def get_users():
-    users = User.query.all()
-    return jsonify([u.to_dict() for u in users])
-
-
-@app.route("/users", methods=["POST"])
-def create_user():
-    data = request.get_json()
-    user = User(username=data["username"], email=data["email"])
-    db.session.add(user)
-    db.session.commit()
-    return jsonify(user.to_dict()), 201
-
-
-@app.route("/users/<int:user_id>", methods=["GET"])
-def get_user(user_id):
-    user = User.query.get_or_404(user_id)
-    return jsonify(user.to_dict())
-
-
-@app.route("/users/<int:user_id>/tasks", methods=["GET"])
-def get_user_tasks(user_id):
-    priority_order = case(
-        (Task.priority == "high", 1),
-        (Task.priority == "medium", 2),
-        (Task.priority == "low", 3),
-        else_=4,
-    )
-
-    tasks = (
-        Task.query
-        .filter_by(user_id=user_id)
-        .order_by(priority_order, Task.id.asc())
-        .all()
-    )
-
-    return jsonify([t.to_dict() for t in tasks])
-
-
-# =======================
-# TASK ROUTEN
-# =======================
-
-# ✔ Alle Tasks abrufen
+# =========================================
+# GET /tasks – alle Tasks holen
+# =========================================
 @app.route("/tasks", methods=["GET"])
 def get_tasks():
-    # Sortierreihenfolge definieren
     priority_order = case(
         (Task.priority == "high", 1),
         (Task.priority == "medium", 2),
@@ -111,139 +75,140 @@ def get_tasks():
         else_=4,
     )
 
-    # Basis-Query
-    query = Task.query
-
-    # 🔹 Optionaler Filter: ?priority=high / medium / low
-    priority_filter = request.args.get("priority")
-    if priority_filter:
-        priority_filter = priority_filter.lower()
-        if priority_filter not in ALLOWED_PRIORITIES:
-            return jsonify(
-                {"error": "Invalid priority filter, allowed: low, medium, high"}
-            ), 400
-        query = query.filter_by(priority=priority_filter)
-
-    # Immer sortiert zurückgeben
-    tasks = query.order_by(priority_order, Task.id.asc()).all()
-
+    tasks = Task.query.order_by(priority_order, Task.id.asc()).all()
     return jsonify([t.to_dict() for t in tasks])
 
-# ✔ Neuen Task erstellen
+
+# =========================================
+# POST /tasks – neuen Task erstellen
+# =========================================
 @app.route("/tasks", methods=["POST"])
 def create_task():
-    data = request.get_json()
+    try:
+        data = request.get_json() or {}
 
-    title = data.get("title")
-    description = data.get("description", "")
-    status = data.get("status", "To Do")
-    priority = data.get("priority", "medium")
-    work_date = data.get("work_date")  # z.B. "2025-12-26"
-    repeat_days_list = data.get("repeat_days")  # z.B. ["SAT"] oder ["MON","FRI"]
-    due_date_str = data.get("due_date") or data.get("deadline")  # je nach Frontend-Feld
-    
+        title = data.get("title")
+        description = data.get("description", "")
+        status = data.get("status", "To Do")
+        priority = data.get("priority", "medium")
+        work_date = data.get("work_date")  # "YYYY-MM-DD"
 
-    # 🔹 1. USER-ID setzen (automatisch)
-    user = User.query.first()
-    if not user:
-      user = User(username="default_user", email="default@example.com")
-      db.session.add(user)
-      db.session.commit()
+        # vom Frontend: due_date oder deadline
+        due_date_str = data.get("due_date") or data.get("deadline")
+        reminder_str = data.get("reminder_time") or data.get("reminder")
+        repeat_days = data.get("repeat_days")
 
-    # 🔹 2. Datum sicher parsen
-    due_date = None
-    if due_date_str:
-        try:
-            # Wenn dein Frontend z.B. "2025-12-31T10:00" schickt:
-            due_date = datetime.fromisoformat(due_date_str)
-        except Exception as e:
-            print("Fehler beim Parsen von due_date:", e)
-            # notfalls ignorieren
-            due_date = None
+        # User sicherstellen
+        user = get_or_create_default_user()
 
-    # 🔹 3. Task-Objekt erstellen
-    new_task = Task(
-        title=title,
-        description=description,
-        status=status,
-        priority=priority,
-        work_date=work_date,
-        due_date=due_date,
-        repeat_days=",".join(repeat_days_list) if repeat_days_list else None,
-        user_id=user.id,   # <- ganz wichtig
-        # category_id kannst du später ergänzen
-    )
+        # Datum parsen
+        due_date = None
+        if due_date_str:
+            try:
+                due_date = datetime.fromisoformat(due_date_str)
+            except Exception as e:
+                print("Fehler beim Parsen von due_date:", e)
+                due_date = None
 
-    db.session.add(new_task)
-    db.session.commit()
+        reminder_time = None
+        if reminder_str:
+            try:
+                reminder_time = datetime.fromisoformat(reminder_str)
+            except Exception as e:
+                print("Fehler beim Parsen von reminder_time:", e)
+                reminder_time = None
 
-    return jsonify(new_task.to_dict()), 201
-# ✔ Task bearbeiten (Titel, Beschreibung, Status, Kategorie)
+        # repeat_days sicher als String speichern
+        if isinstance(repeat_days, list):
+            repeat_days = ",".join(repeat_days)
+        elif repeat_days is None:
+            repeat_days = None
+        else:
+            repeat_days = str(repeat_days)
+
+        new_task = Task(
+            title=title,
+            description=description,
+            status=status,
+            priority=priority,
+            work_date=work_date,
+            due_date=due_date,
+            reminder_time=reminder_time,
+            repeat_days=repeat_days,
+            user_id=user.id,
+        )
+
+        db.session.add(new_task)
+        db.session.commit()
+
+        return jsonify(new_task.to_dict()), 201
+
+    except Exception as e:
+        # Fehler in der Konsole sehen & Fehler ans Frontend schicken
+        print("Fehler in create_task:", e)
+        return jsonify({"error": str(e)}), 500
+
+
+# =========================================
+# PUT /tasks/<id> – Task aktualisieren
+# =========================================
 @app.route("/tasks/<int:task_id>", methods=["PUT"])
 def update_task(task_id):
     task = Task.query.get_or_404(task_id)
-    data = request.get_json()
+    data = request.get_json() or {}
 
-    task.title = data.get("title", task.title)
-    task.description = data.get("description", task.description)
+    if "title" in data:
+        task.title = data["title"] or task.title
+
+    if "description" in data:
+        task.description = data["description"] or ""
 
     if "status" in data:
         new_status = data["status"]
-        if new_status not in ALLOWED_STATUSES:
-            return jsonify({"error": "Invalid status"}), 400
-        task.status = new_status
+        if new_status in ALLOWED_STATUSES:
+            task.status = new_status
 
     if "priority" in data:
         new_priority = data["priority"].lower()
-        if new_priority not in ALLOWED_PRIORITIES:
-            return jsonify({"error": "Invalid priority, allowed: low, medium, high"}), 400
-        task.priority = new_priority
-    
-    # NEU: work_date ändern / löschen
+        if new_priority in ALLOWED_PRIORITIES:
+            task.priority = new_priority
+
     if "work_date" in data:
-        wd_str = data["work_date"]
-        if wd_str in (None, "", "null"):
-            task.work_date = None
-        else:
-            try:
-                task.work_date = datetime.fromisoformat(wd_str).date()
-            except ValueError:
-                return jsonify({"error": "work_date must be ISO date"}), 400
+        task.work_date = data["work_date"] or None
 
-    # 👉 NEU: due_date ändern / löschen
     if "due_date" in data:
-        due_date_str = data["due_date"]
-        if due_date_str in (None, "", "null"):
-            task.due_date = None
-        else:
+        ds = data["due_date"]
+        if ds:
             try:
-                task.due_date = datetime.fromisoformat(due_date_str)
-            except ValueError:
-                return jsonify({"error": "due_date must be ISO format"}), 400
+                task.due_date = datetime.fromisoformat(ds)
+            except Exception:
+                task.due_date = None
+        else:
+            task.due_date = None
 
-    if "category_id" in data:
-        task.category_id = data["category_id"]
+    if "reminder_time" in data:
+        rs = data["reminder_time"]
+        if rs:
+            try:
+                task.reminder_time = datetime.fromisoformat(rs)
+            except Exception:
+                task.reminder_time = None
+        else:
+            task.reminder_time = None
+
+    if "repeat_days" in data:
+        rd = data["repeat_days"]
+        if isinstance(rd, list):
+            rd = ",".join(rd)
+        task.repeat_days = rd or None
 
     db.session.commit()
     return jsonify(task.to_dict())
 
 
-# ⭐ NEU: Task verschieben (für Kanban: To Do → In Progress → Done)
-@app.route("/tasks/<int:task_id>/move", methods=["PUT"])
-def move_task(task_id):
-    task = Task.query.get_or_404(task_id)
-    data = request.get_json() or {}
-
-    new_status = data.get("status")
-    if new_status not in ALLOWED_STATUSES:
-        return jsonify({"error": "Invalid status"}), 400
-
-    task.status = new_status
-    db.session.commit()
-    return jsonify(task.to_dict()), 200
-
-
-# ✔ Task löschen
+# =========================================
+# DELETE /tasks/<id> – Task löschen
+# =========================================
 @app.route("/tasks/<int:task_id>", methods=["DELETE"])
 def delete_task(task_id):
     task = Task.query.get_or_404(task_id)
@@ -252,188 +217,54 @@ def delete_task(task_id):
     return jsonify({"message": "Task gelöscht"})
 
 
-# ======================
-# KATEGORIEN
-# ======================
-
-# Alle Kategorien holen
-@app.route("/categories", methods=["GET"])
-def get_categories():
-    categories = Category.query.all()
-    return jsonify([c.to_dict() for c in categories]), 200
-
-
-# Neue Kategorie anlegen
-@app.route("/categories", methods=["POST"])
-def create_category():
-    data = request.get_json()
-    name = data.get("name")
-
-    if not name:
-        return jsonify({"error": "Category name is required"}), 400
-
-    category = Category(name=name)
-    db.session.add(category)
-    db.session.commit()
-    return jsonify(category.to_dict()), 201
-
-
-# Einzelne Kategorie anzeigen
-@app.route("/categories/<int:category_id>", methods=["GET"])
-def get_category(category_id):
-    category = Category.query.get_or_404(category_id)
-    return jsonify(category.to_dict()), 200
-
-
-# Kategorie-Namen ändern
-@app.route("/categories/<int:category_id>", methods=["PUT"])
-def update_category(category_id):
-    category = Category.query.get_or_404(category_id)
-    data = request.get_json()
-
-    new_name = data.get("name")
-    if not new_name:
-        return jsonify({"error": "New name is required"}), 400
-
-    category.name = new_name
-    db.session.commit()
-    return jsonify(category.to_dict()), 200
-
-
-# Kategorie löschen
-@app.route("/categories/<int:category_id>", methods=["DELETE"])
-def delete_category(category_id):
-    category = Category.query.get_or_404(category_id)
-
-    # Alle Tasks dieser Kategorie entkoppeln
-    tasks = Task.query.filter_by(category_id=category_id).all()
-    for t in tasks:
-        t.category_id = None
-
-    db.session.delete(category)
-    db.session.commit()
-    return jsonify({"message": "Category gelöscht und Tasks entkoppelt"}), 200
-
-
-# Alle Tasks einer Kategorie
-@app.route("/categories/<int:category_id>/tasks", methods=["GET"])
-def get_tasks_by_category(category_id):
-    priority_order = case(
-        (Task.priority == "high", 1),
-        (Task.priority == "medium", 2),
-        (Task.priority == "low", 3),
-        else_=4,
-    )
-
-    tasks = (
-        Task.query
-        .filter_by(category_id=category_id)
-        .order_by(priority_order, Task.id.asc())
-        .all()
-    )
-
-    return jsonify([t.to_dict() for t in tasks]), 200
-
-# =======================
-# BOARD ROUTE (KANNBAN)
-# =======================
-
-@app.route("/board", methods=["GET"])
-def board_view():
-    priority_order = case(
-        (Task.priority == "high", 1),
-        (Task.priority == "medium", 2),
-        (Task.priority == "low", 3),
-        else_=4,
-    )
-
-    tasks = (
-        Task.query
-        .order_by(priority_order, Task.id.asc())
-        .all()
-    )
-
-    board = {
-        "to_do": [],
-        "in_progress": [],
-        "done": []
-    }
-
-    for t in tasks:
-        if t.status == "To Do":
-            board["to_do"].append(t.to_dict())
-        elif t.status == "In Progress":
-            board["in_progress"].append(t.to_dict())
-        elif t.status == "Done":
-            board["done"].append(t.to_dict())
-
-    return jsonify(board), 200
-
-# =======================
-# NOTIFICATIONS
-# =======================
-
-@app.route("/notifications", methods=["GET"])
-def get_notifications():
-    """
-    Benachrichtigungen:
-    - danger: Task ist überfällig
-    - warning: High-Priority-Task mit Deadline in den nächsten 24h
-    - info: High-Priority-Task ohne dringende Deadline
-    Optional: ?user_id=1 für user-spezifische Notifications.
+# =========================================
+# einfache Test-Route: zeigt "Backend funktioniert"
+# =========================================
+@app.route("/", methods=["GET"])
+def backend_ok():
+    return """
+    <!doctype html>
+    <html lang="de">
+    <head>
+        <meta charset="utf-8">
+        <title>Backend Status</title>
+        <style>
+            body {
+                margin: 0;
+                padding: 0;
+                font-family: Arial, sans-serif;
+                background: #ffffff;
+                display: flex;
+                justify-content: center;
+                align-items: center;
+                height: 100vh;
+            }
+            .box {
+                text-align: center;
+            }
+            h1 {
+                font-size: 32px;
+                margin-bottom: 10px;
+            }
+            p {
+                font-size: 18px;
+                color: #555;
+            }
+        </style>
+    </head>
+    <body>
+        <div class="box">
+            <h1>✅ Backend funktioniert</h1>
+            <p>Flask & Datenbank wurden erfolgreich gestartet.</p>
+        </div>
+    </body>
+    </html>
     """
 
-    user_id = request.args.get("user_id", type=int)
 
-    now = datetime.now()
-    soon_threshold = now + timedelta(days=1)   # 👉 24 Stunden
 
-    # Nur Tasks, die nicht erledigt sind
-    query = Task.query.filter(Task.status != "Done")
-
-    if user_id is not None:
-        query = query.filter_by(user_id=user_id)
-
-    tasks = query.all()
-
-    notifications = []
-
-    for t in tasks:
-        notif_type = None
-        message = None
-
-        # 1) ÜBERFÄLLIG → danger
-        if t.due_date and t.due_date < now:
-            notif_type = "danger"
-            message = f"Task '{t.title}' ist überfällig."
-
-        # 2) HIGH + DEADLINE IN 24H → warning
-        elif (
-            t.due_date
-            and now <= t.due_date <= soon_threshold
-            and t.priority == "high"
-        ):
-            notif_type = "warning"
-            message = f"High Priority Task '{t.title}' hat eine Deadline in weniger als 24 Stunden."
-
-        # 3) HIGH, aber noch nicht dringend → info
-        elif t.priority == "high":
-            notif_type = "info"
-            message = f"High Priority Task '{t.title}' ist noch offen."
-
-        if notif_type:
-            notifications.append({
-                "task": t.to_dict(),
-                "type": notif_type,
-                "message": message,
-            })
-
-    return jsonify(notifications), 200
-
-# =======================
-# Datenbank erstellen und App starten
-# =======================
+# =========================================
+# Start
+# =========================================
 if __name__ == "__main__":
-    with app.app_context():
-        db.create_all()
     app.run(debug=True)

@@ -1,38 +1,52 @@
 // src/App.jsx
 // ======================================
 // Task Manager – React Kanban
-// - Holt Tasks vom Backend (Flask)
-// - Zeigt sie nach Status in 3 Spalten
-// - Status änderbar per Dropdown
-// - Priority als farbiger Punkt
-// - NEU: Formular zum Erstellen neuer Tasks
 // ======================================
 
-// 🔹 React Hooks importieren:
-// useState = Werte speichern, die sich ändern (State)
-// useEffect = Code ausführen, wenn die Komponente geladen wird (z.B. Daten laden)
-
 import { useState, useEffect } from "react";
-import { Routes, Route, useNavigate, useSearchParams } from "react-router-dom";
+import { Routes, Route, useNavigate } from "react-router-dom";
 
-// 🔹 CSS-Datei für das Styling importieren
 import "./App.css";
-
-// 🔹 Funktionen für die Kommunikation mit dem Backend
-// fetchTasks  = alle Tasks aus der Datenbank lesen (GET /tasks)
-// updateTask  = eine bestehende Task ändern      (PUT /tasks/:id)
-// createTask  = eine neue Task erstellen         (POST /tasks)
 import { fetchTasks, updateTask, createTask, deleteTask } from "./api";
-
 
 // ===============================
 // KALENDER-SEITE (Startseite "/")
 // ===============================
 function CalendarPage() {
   const navigate = useNavigate();
-  const [viewMode, setViewMode] = useState("week"); // "week" oder "month"
 
   const today = new Date();
+  const todayIso = today.toISOString().split("T")[0];
+
+  // "week" = Tagesansicht (Tag), "month" = Monatsübersicht
+  const [viewMode, setViewMode] = useState("week");
+
+  // aktuell ausgewähltes Datum (für Text "Aufgaben für ...")
+  const [selectedDate, setSelectedDate] = useState(todayIso);
+
+  // Monat, der im Kalender angezeigt wird
+  const [currentMonthDate, setCurrentMonthDate] = useState(() => new Date());
+
+  // Tasks
+  const [dayTasks, setDayTasks] = useState([]);      // Tasks für den Tag
+  const [monthTasks, setMonthTasks] = useState([]);  // Tasks für den Monat
+
+  const [loadingDay, setLoadingDay] = useState(false);
+  const [errorDay, setErrorDay] = useState("");
+
+  // Formular-Status (Tag-Ansicht)
+  const [isCreatingHome, setIsCreatingHome] = useState(false);
+  const [showFormHome, setShowFormHome] = useState(false);
+
+  // Reminder-Logik (nur für Tag)
+  const [now, setNow] = useState(new Date());
+  const [dismissedReminderIds, setDismissedReminderIds] = useState([]);
+
+  // Edit-Modal im Tag-Modus
+  const [editingTaskHome, setEditingTaskHome] = useState(null);
+
+  // 🔹 Filter für Monatsliste & Highlight (null = alle Tage, "YYYY-MM-DD" = nur dieser Tag)
+  const [monthFilterDate, setMonthFilterDate] = useState(null);
 
   // Woche = heute + nächste 6 Tage
   const weekDays = Array.from({ length: 7 }, (_, i) => {
@@ -41,18 +55,241 @@ function CalendarPage() {
     return d;
   });
 
-  // Monat = 30 Tage im aktuellen Monat (einfaches Beispiel)
-  const monthDays = Array.from({ length: 30 }, (_, i) => {
-    const d = new Date(today.getFullYear(), today.getMonth(), i + 1);
-    return d;
+  // Basisdatum für den Monat = currentMonthDate
+  const year = currentMonthDate.getFullYear();
+  const month = currentMonthDate.getMonth(); // 0 = Jan
+
+  // Anzahl der Tage in diesem Monat
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+
+  // Alle Tage des Monats
+  const monthDays = Array.from({ length: daysInMonth }, (_, i) => {
+    return new Date(year, month, i + 1);
   });
 
   const daysToShow = viewMode === "week" ? weekDays : monthDays;
 
+  // =========================
+  // Klick auf einen Tag im Kalender
+  // =========================
   const handleDayClick = (date) => {
     const isoDate = date.toISOString().split("T")[0];
-    navigate(`/board?date=${isoDate}`);
+
+    // Monat auf den Monat dieses Datums setzen
+    setCurrentMonthDate(new Date(date.getFullYear(), date.getMonth(), 1));
+
+    if (viewMode === "week") {
+      // TAG-Modus: ganz normal Datum setzen
+      setSelectedDate(isoDate);
+      return;
+    }
+
+    // MONAT-Modus: Filter an/aus schalten
+    setMonthFilterDate((prev) => {
+      // zweites Mal auf den gleichen Tag → Filter aus
+      if (prev === isoDate) {
+        return null;
+      }
+      // erstes Mal oder anderer Tag → diesen Tag filtern
+      return isoDate;
+    });
+
+    // selectedDate setzen, damit oben der Text "Aufgaben für ..." stimmt
+    setSelectedDate(isoDate);
   };
+
+  const goToPrevMonth = () => {
+    setCurrentMonthDate((prev) => {
+      const next = new Date(prev.getFullYear(), prev.getMonth() - 1, 1);
+      const iso = next.toISOString().split("T")[0];
+      setSelectedDate(iso);
+      setMonthFilterDate(null); // Filter zurücksetzen beim Monatswechsel
+      return next;
+    });
+  };
+
+  const goToNextMonth = () => {
+    setCurrentMonthDate((prev) => {
+      const next = new Date(prev.getFullYear(), prev.getMonth() + 1, 1);
+      const iso = next.toISOString().split("T")[0];
+      setSelectedDate(iso);
+      setMonthFilterDate(null); // Filter zurücksetzen beim Monatswechsel
+      return next;
+    });
+  };
+
+  // "MON", "TUE", ...
+  const getWeekdayCode = (dateStr) => {
+    const d = new Date(dateStr);
+    const day = d.getDay(); // 0=So, 1=Mo, ...
+    const map = ["SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"];
+    return map[day];
+  };
+
+  // Uhrzeit für Reminder
+  useEffect(() => {
+    const id = setInterval(() => setNow(new Date()), 60000);
+    return () => clearInterval(id);
+  }, []);
+
+  // Tasks für Tag + Monat laden
+  useEffect(() => {
+    const loadTasksForDayAndMonth = async () => {
+      try {
+        setLoadingDay(true);
+        setErrorDay("");
+
+        const allTasks = await fetchTasks();
+
+        const weekdayCode = getWeekdayCode(selectedDate);
+
+        // Tasks für den Tag
+        const tasksForDay = allTasks.filter((task) => {
+          const repeatStr = task.repeat_days || "";
+          const repeatList = repeatStr.split(",").filter(Boolean);
+
+          const matchesWorkDate = task.work_date === selectedDate;
+          const matchesRepeat = repeatList.includes(weekdayCode);
+
+          return matchesWorkDate || matchesRepeat;
+        });
+        setDayTasks(tasksForDay);
+
+        // Tasks für den Monat
+        const monthYear = {
+          y: currentMonthDate.getFullYear(),
+          m: currentMonthDate.getMonth(),
+        };
+
+        const tasksForMonth = allTasks.filter((task) => {
+          if (!task.work_date) return false;
+          const d = new Date(task.work_date);
+          return (
+            d.getFullYear() === monthYear.y &&
+            d.getMonth() === monthYear.m
+          );
+        });
+
+        setMonthTasks(tasksForMonth);
+      } catch (err) {
+        console.error(err);
+        setErrorDay(err.message || "Fehler beim Laden der Tasks");
+      } finally {
+        setLoadingDay(false);
+      }
+    };
+
+    if (selectedDate) {
+      loadTasksForDayAndMonth();
+    }
+  }, [selectedDate, currentMonthDate]);
+
+  // Reminder für Tag
+  const dueReminders = dayTasks.filter((task) => {
+    if (!task.reminder_time) return false;
+    if (dismissedReminderIds.includes(task.id)) return false;
+
+    const reminderDate = new Date(task.reminder_time);
+    return reminderDate <= now;
+  });
+
+  const handleDismissReminderHome = (taskId) => {
+    setDismissedReminderIds((prev) => [...prev, taskId]);
+  };
+
+  // Status im Tag-Board ändern
+  const handleStatusChangeHome = async (taskId, newStatus) => {
+    try {
+      setErrorDay("");
+      const updated = await updateTask(taskId, { status: newStatus });
+
+      setDayTasks((prev) =>
+        prev.map((t) => (t.id === taskId ? updated : t))
+      );
+    } catch (err) {
+      console.error(err);
+      setErrorDay(err.message || "Fehler beim Ändern des Status");
+    }
+  };
+
+  // Task im Tag-Board löschen
+  const handleDeleteTaskHome = async (taskId) => {
+    if (!window.confirm("Task löschen?")) return;
+    try {
+      setErrorDay("");
+      await deleteTask(taskId);
+      setDayTasks((prev) => prev.filter((t) => t.id !== taskId));
+    } catch (err) {
+      console.error(err);
+      setErrorDay(err.message || "Fehler beim Löschen der Task");
+    }
+  };
+
+  // Task im Tag-Board bearbeiten speichern
+  const handleSaveEditHome = async (fields) => {
+    if (!editingTaskHome) return;
+    try {
+      setErrorDay("");
+      const updated = await updateTask(editingTaskHome.id, fields);
+      setDayTasks((prev) =>
+        prev.map((t) => (t.id === editingTaskHome.id ? updated : t))
+      );
+      setEditingTaskHome(null);
+    } catch (err) {
+      console.error(err);
+      setErrorDay(err.message || "Fehler beim Bearbeiten der Task");
+    }
+  };
+
+  // Neue Task im Tag-Board erstellen
+  const handleCreateTaskHome = async (formData) => {
+    try {
+      setErrorDay("");
+      setIsCreatingHome(true);
+
+      const payload = {
+        ...formData,
+        work_date: selectedDate || null,
+      };
+
+      const created = await createTask(payload);
+      setDayTasks((prev) => [...prev, created]);
+    } catch (err) {
+      console.error(err);
+      setErrorDay(err.message || "Fehler beim Erstellen der Task");
+    } finally {
+      setIsCreatingHome(false);
+    }
+  };
+
+  // Tasks im Tag-Modus nach Status
+  const tasksByStatusDay = (status) =>
+    dayTasks.filter((t) => t.status === status);
+
+  // Datum schön anzeigen
+  const selectedDateLabel = new Date(selectedDate).toLocaleDateString(
+    "de-DE",
+    {
+      weekday: "long",
+      day: "2-digit",
+      month: "long",
+      year: "numeric",
+    }
+  );
+
+  // Sichtbare Monat-Tasks je nach Filter
+  const visibleMonthTasks =
+    monthFilterDate === null
+      ? monthTasks
+      : monthTasks.filter((t) => t.work_date === monthFilterDate);
+
+  const monthSectionTitle =
+    monthFilterDate === null
+      ? "Alle Aufgaben in diesem Monat"
+      : `Aufgaben am ${new Date(monthFilterDate).toLocaleDateString(
+          "de-DE",
+          { weekday: "long", day: "2-digit", month: "long", year: "numeric" }
+        )}`;
 
   return (
     <div className="app-shell">
@@ -64,29 +301,33 @@ function CalendarPage() {
         </div>
 
         <nav className="sidebar-nav">
+          {/* Tag = Tagesansicht */}
           <button
-            className="sidebar-link active"
-            onClick={() => navigate("/")}
+            className={
+              "sidebar-link" + (viewMode === "week" ? " active" : "")
+            }
+            onClick={() => {
+              setViewMode("week");
+            }}
           >
-            Home
+            Tag
           </button>
+
+          {/* Monat = Monatsansicht */}
           <button
-            className="sidebar-link"
-            onClick={() => setViewMode("week")}
-          >
-            Woche
-          </button>
-          <button
-            className="sidebar-link"
-            onClick={() => setViewMode("month")}
+            className={
+              "sidebar-link" + (viewMode === "month" ? " active" : "")
+            }
+            onClick={() => {
+              setViewMode("month");
+              setMonthFilterDate(null); // beim Wechsel: kein Filter
+              const d = new Date(selectedDate);
+              setCurrentMonthDate(
+                new Date(d.getFullYear(), d.getMonth(), 1)
+              );
+            }}
           >
             Monat
-          </button>
-          <button
-            className="sidebar-link"
-            onClick={() => navigate("/board")}
-          >
-            Board
           </button>
         </nav>
       </aside>
@@ -94,191 +335,362 @@ function CalendarPage() {
       {/* Hauptbereich rechts */}
       <main className="calendar-main">
         <div className="calendar-page">
-          <h1>
-            <span role="img" aria-label="calendar">
-              📅
-            </span>{" "}
-            Dein Task Kalender
-          </h1>
+          {/* Kopfzeile mit Titel + Monatsnavigation */}
+          <div className="calendar-header-row">
+            <h1>
+              <span role="img" aria-label="calendar">
+                📅
+              </span>{" "}
+              Dein Task Kalender
+            </h1>
 
-          {/* kleine Info, welcher Modus */}
+            {/* Monats-Navigation nur im Monat-Modus */}
+            {viewMode === "month" && (
+              <div className="month-nav">
+                <button
+                  type="button"
+                  className="month-nav-button"
+                  onClick={goToPrevMonth}
+                >
+                  ⬅
+                </button>
+                <span className="month-nav-label">
+                  {currentMonthDate.toLocaleDateString("de-DE", {
+                    month: "long",
+                    year: "numeric",
+                  })}
+                </span>
+                <button
+                  type="button"
+                  className="month-nav-button"
+                  onClick={goToNextMonth}
+                >
+                  ➜
+                </button>
+              </div>
+            )}
+          </div>
+
           <p className="calendar-subtitle">
-            Ansicht: {viewMode === "week" ? "Woche" : "Monat"}
+            Ansicht: {viewMode === "week" ? "Tag" : "Monat"}
           </p>
 
           {/* Kreise für Tage */}
           <div className="calendar-circle-grid">
-            {daysToShow.map((d, index) => (
-              <button
-                key={index}
-                className="calendar-day-circle"
-                onClick={() => handleDayClick(d)}
-              >
-                <span className="circle-day-number">
-                  {d.toLocaleDateString("de-DE", { day: "2-digit" })}
-                </span>
-                <span className="circle-day-label">
-                  {d.toLocaleDateString("de-DE", {
-                    weekday: "short",
-                    month: "2-digit",
-                  })}
-                </span>
-              </button>
-            ))}
+            {daysToShow.map((d, index) => {
+              const iso = d.toISOString().split("T")[0];
+
+              // 🔹 Markierung:
+              // - Tag-Modus: nach selectedDate
+              // - Monat-Modus: nach monthFilterDate
+              const isSelected =
+                viewMode === "week"
+                  ? iso === selectedDate
+                  : monthFilterDate === iso;
+
+              return (
+                <button
+                  key={index}
+                  className={
+                    "calendar-day-circle" +
+                    (isSelected ? " calendar-day-circle-selected" : "")
+                  }
+                  onClick={() => handleDayClick(d)}
+                >
+                  <span className="circle-day-number">
+                    {d.getDate().toString().padStart(2, "0")}
+                  </span>
+                  <span className="circle-day-label">
+                    {d.toLocaleDateString("de-DE", {
+                      weekday: "short",
+                    })}
+                  </span>
+                </button>
+              );
+            })}
           </div>
+
+          {/* Überschrift für den ausgewählten Tag */}
+          <h2 className="today-title">
+            Aufgaben für {selectedDateLabel}
+          </h2>
+
+          {loadingDay && (
+            <p className="today-info">Lade Tasks...</p>
+          )}
+          {errorDay && (
+            <p className="today-error">Fehler: {errorDay}</p>
+          )}
+
+          {!loadingDay && dayTasks.length === 0 && !errorDay && (
+            <p className="today-info">
+              Du hast für diesen Tag keine Aufgaben. 🎉
+            </p>
+          )}
+
+          {/* Reminder-Bar (Tag) */}
+          {!loadingDay && dueReminders.length > 0 && (
+            <div className="reminder-bar">
+              <span className="reminder-title">
+                🔔 Erinnerungen:
+              </span>
+              <div className="reminder-list">
+                {dueReminders.map((t) => (
+                  <div key={t.id} className="reminder-item">
+                    <span className="reminder-text">{t.title}</span>
+                    <button
+                      className="reminder-dismiss"
+                      onClick={() =>
+                        handleDismissReminderHome(t.id)
+                      }
+                    >
+                      OK
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Formular + Board NUR im Tag-Modus */}
+          {viewMode === "week" && (
+            <>
+              <div className="home-form-wrapper">
+                <button
+                  type="button"
+                  className="open-form-button"
+                  onClick={() =>
+                    setShowFormHome((prev) => !prev)
+                  }
+                >
+                  {showFormHome
+                    ? "− Neue Task erstellen"
+                    : "+ Neue Task erstellen"}
+                </button>
+
+                {showFormHome && (
+                  <div className="home-form-panel">
+                    <NewTaskForm
+                      onCreate={handleCreateTaskHome}
+                      isSubmitting={isCreatingHome}
+                      initialDate={selectedDate}
+                    />
+                  </div>
+                )}
+              </div>
+
+              <section className="board">
+                <KanbanColumn
+                  title="To Do"
+                  tasks={tasksByStatusDay("To Do")}
+                  onStatusChange={handleStatusChangeHome}
+                  onDeleteTask={handleDeleteTaskHome}
+                  onEditTask={setEditingTaskHome}
+                />
+                <KanbanColumn
+                  title="In Progress"
+                  tasks={tasksByStatusDay("In Progress")}
+                  onStatusChange={handleStatusChangeHome}
+                  onDeleteTask={handleDeleteTaskHome}
+                  onEditTask={setEditingTaskHome}
+                />
+                <KanbanColumn
+                  title="Done"
+                  tasks={tasksByStatusDay("Done")}
+                  onStatusChange={handleStatusChangeHome}
+                  onDeleteTask={handleDeleteTaskHome}
+                  onEditTask={setEditingTaskHome}
+                />
+              </section>
+
+              <EditTaskModal
+                task={editingTaskHome}
+                onClose={() => setEditingTaskHome(null)}
+                onSave={handleSaveEditHome}
+              />
+            </>
+          )}
+
+          {/* Monatsliste mit Filter */}
+          {viewMode === "month" && (
+            <section className="today-section">
+              <h2 className="today-title">
+                {monthSectionTitle}
+              </h2>
+
+              {visibleMonthTasks.length === 0 ? (
+                <p className="today-info">
+                  Keine Aufgaben für diese Auswahl.
+                </p>
+              ) : (
+                <div className="today-task-list">
+                  {visibleMonthTasks.map((task) => {
+                    const workDateText = task.work_date
+                      ? new Date(task.work_date).toLocaleDateString("de-DE")
+                      : null;
+
+                    const priorityClass =
+                      task.priority === "high"
+                        ? "priority-dot-high"
+                        : task.priority === "medium"
+                        ? "priority-dot-medium"
+                        : "priority-dot-low";
+
+                    return (
+                      <div
+                        key={task.id}
+                        className="today-task-card"
+                      >
+                        <div className="today-task-main">
+                          <span className="today-task-title">
+                            {task.title}
+                          </span>
+                          {task.description && (
+                            <span className="today-task-desc">
+                              {task.description}
+                            </span>
+                          )}
+                          {workDateText && (
+                            <span className="today-task-desc">
+                              📅 {workDateText}
+                            </span>
+                          )}
+                        </div>
+
+                        <div className="today-task-meta">
+                          <span
+                            className={`today-priority-dot ${priorityClass}`}
+                          ></span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </section>
+          )}
         </div>
       </main>
     </div>
   );
 }
 
-
 // ======================================
-// Haupt-Komponente der App
+// BOARD-SEITE ("/board")
 // ======================================
 function KanbanPage() {
-  // Datum aus der URL, z.B. /board?date=2025-12-26
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
-  const selectedDate = searchParams.get("date"); // string oder null
+  const selectedDate = searchParams.get("date");
 
-  // Hilfsfunktion: macht aus einem Datum (YYYY-MM-DD) ein Kürzel wie "MON", "TUE", ...
   const getWeekdayCode = (dateStr) => {
     if (!dateStr) return null;
     const d = new Date(dateStr);
-    const day = d.getDay(); // 0=So, 1=Mo, ...
     const map = ["SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"];
-    return map[day];
+    return map[d.getDay()];
   };
 
-  // State
   const [tasks, setTasks] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+
   const [isCreating, setIsCreating] = useState(false);
   const [editingTask, setEditingTask] = useState(null);
 
-  // Beim Laden Tasks holen
+  const [now, setNow] = useState(new Date());
+  const [dismissedReminderIds, setDismissedReminderIds] = useState([]);
+
   useEffect(() => {
-    const loadData = async () => {
+    const load = async () => {
       try {
         setLoading(true);
-        setError("");
         const data = await fetchTasks();
         setTasks(data);
       } catch (err) {
-        console.error(err);
-        setError(err.message || "Fehler beim Laden der Tasks");
+        setError(err.message || "Fehler beim Laden");
       } finally {
         setLoading(false);
       }
     };
-
-    loadData();
+    load();
   }, []);
 
-  // Tasks nach Status + Arbeitstag filtern
+  useEffect(() => {
+    const id = setInterval(() => setNow(new Date()), 60000);
+    return () => clearInterval(id);
+  }, []);
+
   const tasksByStatus = (status) =>
     tasks.filter((task) => {
-      if (!selectedDate) {
-        // Kein Tag gewählt → alle Tasks mit diesem Status
-        return task.status === status;
-      }
+      if (!selectedDate) return task.status === status;
 
-      // Wochentag des ausgewählten Datums (z.B. "MON")
       const weekdayCode = getWeekdayCode(selectedDate);
+      const repeatDays = (task.repeat_days || "")
+        .split(",")
+        .map((x) => x.trim())
+        .filter(Boolean);
 
-      // repeat_days vom Backend ist z.B. "MON,SAT" oder null
-      const repeatStr = task.repeat_days || "";
-      const repeatList = repeatStr.split(",").filter(Boolean); // ["MON","SAT"]
+      const matchStatus = task.status === status;
+      const matchExact = task.work_date === selectedDate;
+      const matchRepeat = repeatDays.includes(weekdayCode);
 
-      const matchesStatus = task.status === status;
-
-      // 1) Task gehört GENAU zu diesem Datum (normaler Task)
-      const matchesWorkDate = task.work_date === selectedDate;
-
-      // 2) ODER Task ist eine Gewohnheit und heute ist einer seiner repeat_days
-      const matchesRepeat = repeatList.includes(weekdayCode);
-
-      return matchesStatus && (matchesWorkDate || matchesRepeat);
+      return matchStatus && (matchExact || matchRepeat);
     });
 
-  // Status aus der Karte ändern (wie früher)
-  const handleStatusChange = async (taskId, newStatus) => {
+  const dueReminders = tasks.filter((task) => {
+    if (!task.reminder_time) return false;
+    if (dismissedReminderIds.includes(task.id)) return false;
+    return new Date(task.reminder_time) <= now;
+  });
+
+  const dismissReminder = (id) =>
+    setDismissedReminderIds((prev) => [...prev, id]);
+
+  const changeStatus = async (taskId, newStatus) => {
     try {
-      setError("");
-      const updatedTask = await updateTask(taskId, { status: newStatus });
-      setTasks((prev) =>
-        prev.map((t) => (t.id === taskId ? updatedTask : t))
-      );
+      const updated = await updateTask(taskId, { status: newStatus });
+      setTasks((prev) => prev.map((t) => (t.id === taskId ? updated : t)));
     } catch (err) {
-      console.error(err);
-      setError(err.message || "Fehler beim Ändern des Status");
+      setError(err.message);
     }
   };
 
-  // Task löschen (mit Bestätigung)
-  const handleDeleteTask = async (taskId) => {
-    const sicher = window.confirm("Willst du diese Task wirklich löschen?");
-    if (!sicher) return;
-
+  const deleteTaskHandler = async (taskId) => {
+    if (!window.confirm("Task löschen?")) return;
     try {
-      setError("");
       await deleteTask(taskId);
-      // lokal aus dem State entfernen
       setTasks((prev) => prev.filter((t) => t.id !== taskId));
     } catch (err) {
-      console.error(err);
-      setError(err.message || "Fehler beim Löschen der Task");
+      setError(err.message);
     }
   };
 
-  // Task bearbeiten: Modal öffnen
-  const handleStartEditTask = (task) => {
-    setEditingTask(task);
-  };
+  const startEdit = (task) => setEditingTask(task);
+  const closeEdit = () => setEditingTask(null);
 
-  // Edit-Modal schließen
-  const handleCloseEdit = () => {
-    setEditingTask(null);
-  };
-
-  // Änderungen speichern
-  const handleSaveEditTask = async (updatedFields) => {
+  const saveEdit = async (fields) => {
     try {
-      setError("");
-      const updated = await updateTask(editingTask.id, updatedFields);
-
-      setTasks((prev) =>
-        prev.map((t) => (t.id === editingTask.id ? updated : t))
-      );
-
+      const updated = await updateTask(editingTask.id, fields);
+      setTasks((p) => p.map((t) => (t.id === editingTask.id ? updated : t)));
       setEditingTask(null);
     } catch (err) {
-      console.error(err);
-      setError(err.message || "Fehler beim Bearbeiten der Task");
+      setError(err.message);
     }
   };
 
-  // Neue Task erstellen
-  const handleCreateTask = async (formData) => {
+  const createTaskHandler = async (formData) => {
     try {
-      setError("");
       setIsCreating(true);
-
       const created = await createTask(formData);
-      console.log("Vom Backend zurück:", created);
-
       setTasks((prev) => [...prev, created]);
     } catch (err) {
-      console.error(err);
-      setError(err.message || "Fehler beim Erstellen der Task");
+      setError(err.message);
     } finally {
       setIsCreating(false);
     }
   };
 
-  if (loading) {
+  if (loading)
     return (
       <div className="app-shell">
         <aside className="sidebar">
@@ -288,15 +700,13 @@ function KanbanPage() {
           </div>
         </aside>
         <main className="board-main">
-          <div className="page-wrapper">Loading tasks...</div>
+          <div className="page-wrapper">Loading...</div>
         </main>
       </div>
     );
-  }
 
   return (
     <div className="app-shell">
-      {/* Sidebar links – wie auf der Startseite, aber "Board" aktiv */}
       <aside className="sidebar">
         <div className="sidebar-header">
           <span className="sidebar-logo">📅</span>
@@ -304,34 +714,16 @@ function KanbanPage() {
         </div>
 
         <nav className="sidebar-nav">
-          <button
-            className="sidebar-link"
-            onClick={() => navigate("/")}
-          >
-            Home
+          <button className="sidebar-link" onClick={() => navigate("/")}>
+            Tag
           </button>
-          <button
-            className="sidebar-link"
-            onClick={() => navigate("/")}
-          >
-            Woche
-          </button>
-          <button
-            className="sidebar-link"
-            onClick={() => navigate("/")}
-          >
+          <button className="sidebar-link" onClick={() => navigate("/")}>
             Monat
           </button>
-          <button
-            className="sidebar-link active"
-            onClick={() => navigate("/board")}
-          >
-            Board
-          </button>
+          <button className="sidebar-link active">Board</button>
         </nav>
       </aside>
 
-      {/* Hauptinhalt rechts: dein Kanban-Board */}
       <main className="board-main">
         <div className="page-wrapper">
           <header className="page-header">
@@ -339,20 +731,38 @@ function KanbanPage() {
 
             {selectedDate ? (
               <p className="page-subtitle">
-                To-Do-Liste für den{" "}
+                To-Do Liste für{" "}
                 {new Date(selectedDate).toLocaleDateString("de-DE")}
               </p>
             ) : (
-              <p className="page-subtitle">
-                Alle Tasks – kein bestimmter Tag ausgewählt.
-              </p>
+              <p className="page-subtitle">Alle Tasks</p>
             )}
           </header>
 
-          {error && <p className="error-text">Error: {error}</p>}
+          {error && <p className="error-text">{error}</p>}
+
+          {dueReminders.length > 0 && (
+            <div className="reminder-bar">
+              <span className="reminder-title">🔔 Erinnerungen:</span>
+
+              <div className="reminder-list">
+                {dueReminders.map((t) => (
+                  <div key={t.id} className="reminder-item">
+                    <span className="reminder-text">{t.title}</span>
+                    <button
+                      className="reminder-dismiss"
+                      onClick={() => dismissReminder(t.id)}
+                    >
+                      OK
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
           <NewTaskForm
-            onCreate={handleCreateTask}
+            onCreate={createTaskHandler}
             isSubmitting={isCreating}
             initialDate={selectedDate}
           />
@@ -361,95 +771,50 @@ function KanbanPage() {
             <KanbanColumn
               title="To Do"
               tasks={tasksByStatus("To Do")}
-              onStatusChange={handleStatusChange}
-              onDeleteTask={handleDeleteTask}
-              onEditTask={handleStartEditTask}
+              onStatusChange={changeStatus}
+              onDeleteTask={deleteTaskHandler}
+              onEditTask={startEdit}
             />
+
             <KanbanColumn
               title="In Progress"
               tasks={tasksByStatus("In Progress")}
-              onStatusChange={handleStatusChange}
-              onDeleteTask={handleDeleteTask}
-              onEditTask={handleStartEditTask}
+              onStatusChange={changeStatus}
+              onDeleteTask={deleteTaskHandler}
+              onEditTask={startEdit}
             />
+
             <KanbanColumn
               title="Done"
               tasks={tasksByStatus("Done")}
-              onStatusChange={handleStatusChange}
-              onDeleteTask={handleDeleteTask}
-              onEditTask={handleStartEditTask}
+              onStatusChange={changeStatus}
+              onDeleteTask={deleteTaskHandler}
+              onEditTask={startEdit}
             />
           </section>
 
           <EditTaskModal
             task={editingTask}
-            onClose={handleCloseEdit}
-            onSave={handleSaveEditTask}
+            onClose={closeEdit}
+            onSave={saveEdit}
           />
         </div>
       </main>
     </div>
   );
 }
-//======================================
-// NEUE App-Komponente: kümmert sich NUR 
-// um die Routen
-//======================================
-function App() {
-  return (
-    <>
-      {/* 
-        Routes = sagt React, welche Seite wann angezeigt wird 
-      */}
-      <Routes>
-
-        {/* 
-          Wenn der User http://localhost:5173/ öffnet
-          → Kalender anzeigen
-        */}
-        <Route path="/" element={<CalendarPage />} />
-
-        {/* 
-          Wenn der User http://localhost:5173/board öffnet
-          → Kanban Board anzeigen
-        */}
-        <Route path="/board" element={<KanbanPage />} />
-      </Routes>
-    </>
-  );
-}
-
-// -----------------------------------------
-// Wichtig: jetzt exportieren wir DIESE App()
-// nicht mehr KanbanPage!
-// -----------------------------------------
-export default App;   // ⭐ NUR DIESER DARF BLEIBEN ⭐
-
 
 // ======================================
-// NEU: Formular-Komponente zum Erstellen
-// einer neuen Task
-// ======================================
-
-// Props:
-// onCreate     = Funktion aus App, die aufgerufen wird, wenn das Formular abgeschickt wird
-// isSubmitting = true/false, ob gerade an das Backend gesendet wird
-// ======================================
-// Formular-Komponente für neue Tasks
+// Formular für neue Tasks
 // ======================================
 function NewTaskForm({ onCreate, isSubmitting, initialDate }) {
-  // Titel-Feld
   const [title, setTitle] = useState("");
-  // Beschreibung
   const [description, setDescription] = useState("");
-  // Status-Dropdown
   const [status, setStatus] = useState("To Do");
-  // Priority-Dropdown
   const [priority, setPriority] = useState("high");
-  // Deadline (datetime-local)
   const [dueDate, setDueDate] = useState("");
-
   const [repeatDays, setRepeatDays] = useState([]);
+  const [reminderTime, setReminderTime] = useState("");
 
   const handleSubmit = (event) => {
     event.preventDefault();
@@ -459,35 +824,28 @@ function NewTaskForm({ onCreate, isSubmitting, initialDate }) {
       return;
     }
 
-    // 🔹 Payload fürs Backend bauen
     const newTaskData = {
       title: title.trim(),
       description: description.trim(),
       status,
       priority,
-      // kann leer sein → Backend darf das zulassen
       due_date: dueDate || null,
-      // Arbeitstag aus der URL (Kalender-Tag)
       work_date: initialDate || null,
-      // NEU: Wiederholungstage (Liste)
       repeat_days: repeatDays,
+      reminder_time: reminderTime || null,
     };
 
-    console.log("Sende neuen Task:", newTaskData);
-
-    // Nur ausführen, wenn eine Funktion übergeben wurde
     if (typeof onCreate === "function") {
       onCreate(newTaskData);
-    } else {
-      console.error("❌ onCreate wurde nicht als Funktion übergeben!");
     }
 
-    // Felder zurücksetzen
     setTitle("");
     setDescription("");
     setStatus("To Do");
     setPriority("high");
     setDueDate("");
+    setReminderTime("");
+    setRepeatDays([]);
   };
 
   return (
@@ -495,7 +853,6 @@ function NewTaskForm({ onCreate, isSubmitting, initialDate }) {
       <h2 className="new-task-title">Neue Task erstellen</h2>
 
       <form className="new-task-form" onSubmit={handleSubmit}>
-        {/* Titel */}
         <div className="form-row">
           <label className="form-label">
             Titel *
@@ -509,7 +866,6 @@ function NewTaskForm({ onCreate, isSubmitting, initialDate }) {
           </label>
         </div>
 
-        {/* Beschreibung */}
         <div className="form-row">
           <label className="form-label">
             Beschreibung
@@ -523,7 +879,6 @@ function NewTaskForm({ onCreate, isSubmitting, initialDate }) {
           </label>
         </div>
 
-        {/* Status + Priority nebeneinander */}
         <div className="form-row form-row-inline">
           <label className="form-label">
             Status
@@ -552,7 +907,6 @@ function NewTaskForm({ onCreate, isSubmitting, initialDate }) {
           </label>
         </div>
 
-        {/* Deadline-Feld */}
         <div className="form-row">
           <label className="form-label">
             Deadline
@@ -565,7 +919,18 @@ function NewTaskForm({ onCreate, isSubmitting, initialDate }) {
           </label>
         </div>
 
-        {/* NEU: Wiederholen an bestimmten Tagen (z.B. Samstag) */}
+        <div className="form-row">
+          <label className="form-label">
+            Erinnerung (optional)
+            <input
+              className="form-input"
+              type="datetime-local"
+              value={reminderTime}
+              onChange={(e) => setReminderTime(e.target.value)}
+            />
+          </label>
+        </div>
+
         <div className="form-row">
           <span className="form-label">Wiederholen an:</span>
           <div className="repeat-days">
@@ -596,7 +961,6 @@ function NewTaskForm({ onCreate, isSubmitting, initialDate }) {
           </div>
         </div>
 
-        {/* Button */}
         <div className="form-row">
           <button
             className="form-button"
@@ -612,10 +976,15 @@ function NewTaskForm({ onCreate, isSubmitting, initialDate }) {
 }
 
 // ======================================
-// Spalte im Kanban-Board
+// Kanban-Spalte
 // ======================================
-
-function KanbanColumn({ title, tasks, onStatusChange, onDeleteTask, onEditTask }) {
+function KanbanColumn({
+  title,
+  tasks,
+  onStatusChange,
+  onDeleteTask,
+  onEditTask,
+}) {
   return (
     <div className="column">
       <h2 className="column-title">{title}</h2>
@@ -639,9 +1008,8 @@ function KanbanColumn({ title, tasks, onStatusChange, onDeleteTask, onEditTask }
   );
 }
 
-
 // ======================================
-// Edit-Modal für bestehende Tasks
+// Edit-Modal
 // ======================================
 function EditTaskModal({ task, onClose, onSave }) {
   if (!task) return null;
@@ -651,19 +1019,23 @@ function EditTaskModal({ task, onClose, onSave }) {
   const [status, setStatus] = useState(task.status || "To Do");
   const [priority, setPriority] = useState(task.priority || "high");
 
-  // Deadline
   const initialDue =
     task.due_date && task.due_date.length >= 16
       ? task.due_date.slice(0, 16)
       : "";
   const [dueDate, setDueDate] = useState(initialDue);
 
-  // NEU: Repeat Days (String → Array)
+  const initialReminder =
+    task.reminder_time && task.reminder_time.length >= 16
+      ? task.reminder_time.slice(0, 16)
+      : "";
+  const [reminderTime, setReminderTime] = useState(initialReminder);
+
   const initialRepeat =
     (task.repeat_days || "")
       .split(",")
       .map((d) => d.trim())
-      .filter(Boolean); // z.B. ["MON","SAT"]
+      .filter(Boolean);
   const [repeatDays, setRepeatDays] = useState(initialRepeat);
 
   const handleSubmit = (e) => {
@@ -675,6 +1047,7 @@ function EditTaskModal({ task, onClose, onSave }) {
       status,
       priority,
       due_date: dueDate || null,
+      reminder_time: reminderTime || null,
       repeat_days: repeatDays,
     });
   };
@@ -743,7 +1116,16 @@ function EditTaskModal({ task, onClose, onSave }) {
             />
           </label>
 
-          {/* NEU: Wiederholen an bestimmten Tagen */}
+          <label className="form-label">
+            Erinnerung (optional)
+            <input
+              className="form-input"
+              type="datetime-local"
+              value={reminderTime}
+              onChange={(e) => setReminderTime(e.target.value)}
+            />
+          </label>
+
           <div className="form-row">
             <span className="form-label">Wiederholen an:</span>
             <div className="repeat-days">
@@ -792,20 +1174,14 @@ function EditTaskModal({ task, onClose, onSave }) {
   );
 }
 
-
-
 // ======================================
-// Task-Karte (einzelne Aufgabe im Board)
+// Task-Karte
 // ======================================
-
 function TaskCard({ task, onStatusChange, onDeleteTask, onEditTask }) {
-
   const deadlineText = task.due_date
     ? new Date(task.due_date).toLocaleString("de-DE")
     : null;
 
-  // Priority wird in eine CSS-Klasse übersetzt,
-  // damit wir im CSS die richtige Farbe setzen können.
   const priorityClass =
     task.priority === "high"
       ? "priority-dot-high"
@@ -813,28 +1189,25 @@ function TaskCard({ task, onStatusChange, onDeleteTask, onEditTask }) {
       ? "priority-dot-medium"
       : "priority-dot-low";
 
-  // Wird aufgerufen, wenn im Status-Dropdown ein neuer Wert gewählt wird
   const handleSelectChange = (event) => {
-    const newStatus = event.target.value; // neuer Status aus dem <select>
-    onStatusChange(task.id, newStatus);   // App informieren
+    const newStatus = event.target.value;
+    onStatusChange(task.id, newStatus);
   };
 
   return (
     <article className="task-card">
-      {/* Titel anzeigen */}
       <h3 className="task-title">{task.title}</h3>
 
-      {/* Beschreibung nur anzeigen, wenn sie existiert */}
       {task.description && (
         <p className="task-description">{task.description}</p>
       )}
+
       {deadlineText && (
-         <p className="task-deadline">
-           <strong>Deadline:</strong> {deadlineText}
-         </p>
+        <p className="task-deadline">
+          <strong>Deadline:</strong> {deadlineText}
+        </p>
       )}
 
-      {/* Aktionen oben rechts: Bearbeiten & Löschen (sichtbar bei Hover) */}
       <div className="task-actions">
         <button
           type="button"
@@ -852,15 +1225,13 @@ function TaskCard({ task, onStatusChange, onDeleteTask, onEditTask }) {
         </button>
       </div>
 
-      {/* Untere Zeile: Status-Dropdown + Priority-Punkt */}
       <div className="task-meta">
-        {/* Status-Dropdown */}
         <label className="status-label">
           Status:
           <select
             className="status-select"
-            value={task.status}          // aktueller Status
-            onChange={handleSelectChange} // bei Änderung → handleSelectChange
+            value={task.status}
+            onChange={handleSelectChange}
           >
             <option value="To Do">To Do</option>
             <option value="In Progress">In Progress</option>
@@ -868,10 +1239,27 @@ function TaskCard({ task, onStatusChange, onDeleteTask, onEditTask }) {
           </select>
         </label>
 
-        {/* Priority-Farbpunkt (keine Schrift, nur Farbe) */}
         <span className={`priority-dot ${priorityClass}`}></span>
       </div>
     </article>
   );
 }
+
+// ======================================
+// App-Komponente: kümmert sich NUR um Routen
+// ======================================
+function App() {
+  return (
+    <Routes>
+      <Route path="/" element={<CalendarPage />} />
+      <Route path="/board" element={<KanbanPage />} />
+    </Routes>
+  );
+}
+
+// ⬇️ GANZ UNTEN, EINZIGER EXPORT
+export default App;
+
+
+
 
