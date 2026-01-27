@@ -1837,3 +1837,22 @@ body {
 
 
 
+.topbar-logout{
+  margin-left: auto;
+  height: 36px;
+  padding: 0 12px;
+  border-radius: 12px;
+  border: 1px solid rgba(255,255,255,0.16);
+  background: rgba(255,255,255,0.06);
+  color: rgba(15, 23, 42, 0.85);
+  cursor: pointer;
+}
+.topbar-logout:hover{
+  background: rgba(255,255,255,0.10);
+}
+
+
+
+
+
+

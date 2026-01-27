@@ -234,3 +234,181 @@
     flex-direction: column;
   }
 }
+
+
+
+
+
+
+
+
+
+
+
+
+/* =========================
+   LOGIN PAGE (Variante 1)
+   ========================= */
+.login-page{
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: radial-gradient(1200px 800px at 10% 10%, rgba(99,102,241,0.25), transparent 60%),
+              radial-gradient(1000px 700px at 90% 20%, rgba(34,197,94,0.18), transparent 55%),
+              radial-gradient(900px 700px at 40% 90%, rgba(14,165,233,0.20), transparent 60%),
+              #0b1220;
+}
+
+.login-card{
+  width: 100%;
+  max-width: 420px;
+  border-radius: 18px;
+  padding: 22px 20px;
+  background: rgba(255,255,255,0.08);
+  border: 1px solid rgba(255,255,255,0.14);
+  backdrop-filter: blur(14px);
+}
+
+.login-brand{
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  margin-bottom: 14px;
+}
+
+.login-logo{
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  display: grid;
+  place-items: center;
+  background: rgba(255,255,255,0.10);
+  border: 1px solid rgba(255,255,255,0.14);
+}
+
+.login-title{
+  margin: 0;
+  font-size: 20px;
+  color: rgba(255,255,255,0.92);
+}
+
+.login-subtitle{
+  margin: 2px 0 0 0;
+  font-size: 13px;
+  color: rgba(255,255,255,0.70);
+}
+
+.login-form{
+  display: grid;
+  gap: 12px;
+  margin-top: 10px;
+}
+
+.login-label{
+  display: grid;
+  gap: 6px;
+  font-size: 13px;
+  color: rgba(255,255,255,0.80);
+}
+
+.login-input{
+  width: 100%;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid rgba(255,255,255,0.16);
+  background: rgba(0,0,0,0.20);
+  color: rgba(255,255,255,0.92);
+  outline: none;
+}
+
+.login-input:focus{
+  border-color: rgba(99,102,241,0.65);
+}
+
+.login-password-row{
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 8px;
+  align-items: center;
+}
+
+.login-showpw{
+  height: 38px;
+  padding: 0 10px;
+  border-radius: 12px;
+  border: 1px solid rgba(255,255,255,0.16);
+  background: rgba(255,255,255,0.06);
+  color: rgba(255,255,255,0.85);
+  cursor: pointer;
+}
+
+.login-button{
+  height: 42px;
+  border-radius: 12px;
+  border: 1px solid rgba(99,102,241,0.45);
+  background: rgba(99,102,241,0.22);
+  color: rgba(255,255,255,0.92);
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.login-button:hover{
+  background: rgba(99,102,241,0.30);
+}
+
+.login-link{
+  border: none;
+  background: transparent;
+  color: rgba(255,255,255,0.70);
+  cursor: pointer;
+  text-decoration: underline;
+  font-size: 12px;
+  justify-self: start;
+  padding: 0;
+}
+
+.login-error{
+  margin: 8px 0 0 0;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid rgba(239,68,68,0.35);
+  background: rgba(239,68,68,0.12);
+  color: rgba(255,255,255,0.90);
+  font-size: 13px;
+}
+
+/* ✅ Login Inputs – Dimensionen fixen */
+.login-card input,
+.form-input {
+  width: 100%;
+  height: 44px;              /* 🔑 WICHTIG: feste Höhe */
+  padding: 0 14px;           /* 🔑 kein vertikales Padding */
+  font-size: 14px;
+
+  border-radius: 12px;
+  box-sizing: border-box;    /* 🔑 verhindert Übergröße */
+}
+
+
+.password-wrapper {
+  position: relative;
+}
+
+.password-wrapper input {
+  padding-right: 42px;   /* Platz für das Auge */
+}
+
+.password-toggle {
+  position: absolute;
+  right: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+}
+
+.login-button,
+.form-button {
+  height: 44px;
+  border-radius: 12px;
+  font-size: 14px;
+}

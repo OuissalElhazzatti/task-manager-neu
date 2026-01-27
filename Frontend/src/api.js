@@ -1,24 +1,36 @@
 // src/api.js
 // ======================================
-// Diese Datei kümmert sich um die Kommunikation
-// zwischen React und deinem Flask-Backend.
-// 💡 Die Datei enthält 4 Funktionen:
-
-//   1️⃣ fetchTasks() → Tasks holen
-//   2️⃣ createTask() → neue Task erstellen
-//   3️⃣ updateTask() → eine Task updaten
-//   4️⃣ fetchNotifications() → Notifications holen
+// Kommunikation zwischen React und Flask-Backend
 // ======================================
 
-// 👉 Backend-URL anpassen, falls nötig
-// Wenn dein Flask-Server mit `flask run` läuft, ist es meistens:
 const API_BASE_URL = "http://127.0.0.1:5000";
+
+// --------------------------------------
+// ✅ Helper: User aus localStorage als Header mitsenden
+// --------------------------------------
+function authHeaders() {
+  const userEmail = localStorage.getItem("userEmail") || "";
+  return {
+    "Content-Type": "application/json",
+    "X-User-Email": userEmail,
+  };
+}
+
+function authHeaderOnly() {
+  const userEmail = localStorage.getItem("userEmail") || "";
+  return {
+    "X-User-Email": userEmail,
+  };
+}
 
 // --------------------------------------
 // Alle Tasks laden (GET /tasks)
 // --------------------------------------
 export async function fetchTasks() {
-  const res = await fetch(`${API_BASE_URL}/tasks`);
+  const res = await fetch(`${API_BASE_URL}/tasks`, {
+    headers: authHeaderOnly(),
+  });
+
   if (!res.ok) {
     throw new Error("Fehler beim Laden der Tasks");
   }
@@ -31,13 +43,14 @@ export async function fetchTasks() {
 export async function deleteTask(id) {
   const res = await fetch(`${API_BASE_URL}/tasks/${id}`, {
     method: "DELETE",
+    headers: authHeaderOnly(),
   });
 
   if (!res.ok) {
     throw new Error("Fehler beim Löschen der Task");
   }
 
-  return res.json(); // enthält {"message": "Task gelöscht"}
+  return res.json(); // {"message": "..."}
 }
 
 // --------------------------------------
@@ -46,7 +59,7 @@ export async function deleteTask(id) {
 export async function createTask(taskData) {
   const res = await fetch(`${API_BASE_URL}/tasks`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: authHeaders(),
     body: JSON.stringify(taskData),
   });
 
@@ -63,7 +76,7 @@ export async function createTask(taskData) {
 export async function updateTask(id, updates) {
   const res = await fetch(`${API_BASE_URL}/tasks/${id}`, {
     method: "PUT",
-    headers: { "Content-Type": "application/json" },
+    headers: authHeaders(),
     body: JSON.stringify(updates),
   });
 
@@ -76,11 +89,49 @@ export async function updateTask(id, updates) {
 
 // --------------------------------------
 // Notifications laden (GET /notifications)
+// (Hinweis: existiert nur, wenn dein Backend das auch hat)
 // --------------------------------------
 export async function fetchNotifications() {
-  const res = await fetch(`${API_BASE_URL}/notifications`);
+  const res = await fetch(`${API_BASE_URL}/notifications`, {
+    headers: authHeaderOnly(),
+  });
+
   if (!res.ok) {
     throw new Error("Fehler beim Laden der Notifications");
   }
   return res.json();
+}
+
+// --------------------------------------
+// Auth: Registrierung (POST /auth/register)
+// --------------------------------------
+export async function registerUser(payload) {
+  const res = await fetch(`${API_BASE_URL}/auth/register`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+
+  const data = await res.json();
+  if (!res.ok) {
+    throw new Error(data.error || "Registrierung fehlgeschlagen");
+  }
+  return data;
+}
+
+// --------------------------------------
+// Auth: Login (POST /auth/login)
+// --------------------------------------
+export async function loginUser(email, password) {
+  const res = await fetch(`${API_BASE_URL}/auth/login`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email, password }),
+  });
+
+  const data = await res.json();
+  if (!res.ok) {
+    throw new Error(data.error || "Login fehlgeschlagen");
+  }
+  return data; // { ok: true, user: {...} }
 }

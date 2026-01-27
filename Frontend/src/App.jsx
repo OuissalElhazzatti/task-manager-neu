@@ -4,17 +4,59 @@
 // ======================================
 
 import { useState, useEffect } from "react";
-import { Routes, Route, useNavigate } from "react-router-dom";
 
+//import { Routes, Route, useNavigate } from "react-router-dom";
 import "./App.css";
 import { fetchTasks, updateTask, createTask, deleteTask } from "./api";
+
+//import { Routes, Route, useNavigate, useSearchParams } from "react-router-dom";
+//import { Routes, Route } from "react-router-dom";
+
+import { Routes, Route, useNavigate, useSearchParams } from "react-router-dom";
+
+import LoginPage from "./LoginPage";
+import ProtectedRoute from "./ProtectedRoute";
+
+import RegisterPage from "./RegisterPage";
+
+
+function authHeaders() {
+  const userEmail = localStorage.getItem("userEmail") || "";
+  return {
+    "Content-Type": "application/json",
+    "X-User-Email": userEmail,
+  };
+}
+
+function authHeaderOnly() {
+  const userEmail = localStorage.getItem("userEmail") || "";
+  return { "X-User-Email": userEmail };
+}
+
+
+const dismissedKey = (email) => `dismissedReminders:${email || "guest"}`;
+
+function loadDismissed(email) {
+  try {
+    return JSON.parse(localStorage.getItem(dismissedKey(email)) || "[]");
+  } catch {
+    return [];
+  }
+}
+
+function saveDismissed(email, ids) {
+  localStorage.setItem(dismissedKey(email), JSON.stringify(ids));
+}
+
+
+
 
 // ===============================
 // KALENDER-SEITE (Startseite "/")
 // ===============================
 function CalendarPage() {
   const navigate = useNavigate();
-
+  
   // ✅ Lokales ISO-Datum (YYYY-MM-DD) OHNE UTC-Shift
   const toLocalISO = (date) => {
     const y = date.getFullYear();
@@ -68,13 +110,33 @@ function CalendarPage() {
 
   // Reminder-Logik (nur für Tag)
   const [now, setNow] = useState(new Date());
-  const [dismissedReminderIds, setDismissedReminderIds] = useState([]);
+  
+  const [isAuth, setIsAuth] = useState(localStorage.getItem("isAuth") === "true");
+  const [userEmail, setUserEmail] = useState(localStorage.getItem("userEmail") || "");
+   
+  const [dismissedReminderIds, setDismissedReminderIds] = useState(() =>
+  loadDismissed(localStorage.getItem("userEmail") || "")
+  );
+
+
+   useEffect(() => {
+  // immer wenn isAuth wechselt, Email neu lesen
+  setUserEmail(localStorage.getItem("userEmail") || "");
+   }, [isAuth]);
+
+
+  useEffect(() => {
+  setDismissedReminderIds(loadDismissed(userEmail));
+   }, [userEmail]);
+
 
   // Edit-Modal im Tag-Modus
   const [editingTaskHome, setEditingTaskHome] = useState(null);
 
   // Filter für Monatsliste & Highlight (null = alle Tage, "YYYY-MM-DD" = nur dieser Tag)
   const [monthFilterDate, setMonthFilterDate] = useState(null);
+
+  
 
   // Woche = heute + nächste 6 Tage
   const weekDays = Array.from({ length: 7 }, (_, i) => {
@@ -199,8 +261,12 @@ function CalendarPage() {
   });
 
   const handleDismissReminderHome = (taskId) => {
-    setDismissedReminderIds((prev) => [...prev, taskId]);
-  };
+  setDismissedReminderIds((prev) => {
+    const next = prev.includes(taskId) ? prev : [...prev, taskId];
+    saveDismissed(userEmail, next);
+    return next;
+  });
+};
 
   // =========================
   // Status / Delete / Edit
@@ -424,7 +490,7 @@ function CalendarPage() {
       <div className="topbar-inner">
         <h1>
           <span role="img" aria-label="calendar">
-            📅
+            📋
           </span>{" "}
           Dein Task Kalender
         </h1>
@@ -460,7 +526,7 @@ function CalendarPage() {
     <div className="app-row">
       <aside className="sidebar">
         <div className="sidebar-header">
-          <span className="sidebar-logo">📅</span>
+          <span className="sidebar-logo">📋</span>
           <span className="sidebar-title">Task Manager</span>
         </div>
 
@@ -474,7 +540,7 @@ function CalendarPage() {
               setCurrentMonthDate(new Date(today.getFullYear(), today.getMonth(), 1));
             }}
           >
-            Tag
+            Woche
           </button>
 
           <button
@@ -488,8 +554,31 @@ function CalendarPage() {
           >
             Monat
           </button>
+
+        {/* LOGIN / LOGOUT – GENAU HIER */}
+  <button
+  className="sidebar-link"
+  onClick={() => {
+    if (isAuth) {
+      // Logout
+      localStorage.removeItem("isAuth");
+      localStorage.removeItem("userEmail");
+      setIsAuth(false);
+      navigate("/login");
+    } else {
+      navigate("/login");
+    }
+  }}
+>
+  {isAuth ? "Logout" : "Login"}
+</button>
+
+
+
         </nav>
       </aside>
+
+      
 
       <main className="calendar-main">
         <div className="calendar-page">
@@ -1452,18 +1541,46 @@ function TaskCard({ task, onStatusChange, onDeleteTask, onEditTask }) {
 // ======================================
 // App-Komponente: kümmert sich NUR um Routen
 // ======================================
-function App() {
+//function App() {
+//  return (
+//   <Routes>
+//      <Route path="/" element={<CalendarPage />} />
+//      <Route path="/board" element={<KanbanPage />} />
+//    </Routes>
+//  );
+//}
+
+// ⬇️ GANZ UNTEN, EINZIGER EXPORT
+//export default App;
+export default function App() {
   return (
     <Routes>
-      <Route path="/" element={<CalendarPage />} />
-      <Route path="/board" element={<KanbanPage />} />
+      {/* 🔐 Login-Seite (frei zugänglich) */}
+      <Route path="/login" element={<LoginPage />} />
+      <Route path="/register" element={<RegisterPage />} />
+
+      {/* 🏠 Startseite – geschützt */}
+      <Route
+        path="/"
+        element={
+          <ProtectedRoute>
+            <CalendarPage />
+          </ProtectedRoute>
+        }
+      />
+
+      {/* 📋 Board – geschützt */}
+      <Route
+        path="/board"
+        element={
+          <ProtectedRoute>
+            <KanbanPage />
+          </ProtectedRoute>
+        }
+      />
     </Routes>
   );
 }
-
-// ⬇️ GANZ UNTEN, EINZIGER EXPORT
-export default App;
-
 
 
 

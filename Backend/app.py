@@ -22,6 +22,13 @@ CORS(app)
 with app.app_context():
     db.create_all()
 
+def get_current_user_from_header():
+    email = (request.headers.get("X-User-Email") or "").strip().lower()
+    if not email:
+        return None
+    return User.query.filter_by(email=email).first()
+
+
 # erlaubte Status / Prioritäten
 ALLOWED_STATUSES = ["To Do", "In Progress", "Done"]
 ALLOWED_PRIORITIES = ["low", "medium", "high"]
@@ -31,9 +38,10 @@ ALLOWED_PRIORITIES = ["low", "medium", "high"]
 # Hilfsfunktion: Default-User sicherstellen
 # =========================================
 def get_or_create_default_user():
-    user = User.query.first()
+    user = User.query.filter_by(email="demo@example.com").first()
     if not user:
         user = User(username="demo_user", email="demo@example.com")
+        user.set_password("123456")  # ✅ Passwort setzen
         db.session.add(user)
         db.session.commit()
     return user
@@ -68,6 +76,10 @@ def debug_create_task():
 # =========================================
 @app.route("/tasks", methods=["GET"])
 def get_tasks():
+    user = get_current_user_from_header()
+    if not user:
+        return jsonify({"error": "Not authenticated"}), 401
+
     priority_order = case(
         (Task.priority == "high", 1),
         (Task.priority == "medium", 2),
@@ -75,7 +87,12 @@ def get_tasks():
         else_=4,
     )
 
-    tasks = Task.query.order_by(priority_order, Task.id.asc()).all()
+    tasks = (
+        Task.query
+        .filter(Task.user_id == user.id)
+        .order_by(priority_order, Task.id.asc())
+        .all()
+    )
     return jsonify([t.to_dict() for t in tasks])
 
 
@@ -99,8 +116,9 @@ def create_task():
         repeat_days = data.get("repeat_days")
 
         # User sicherstellen
-        user = get_or_create_default_user()
-
+        user = get_current_user_from_header()
+        if not user:
+          return jsonify({"error": "Not authenticated"}), 401
         # Datum parsen
         due_date = None
         if due_date_str:
@@ -155,6 +173,11 @@ def create_task():
 @app.route("/tasks/<int:task_id>", methods=["PUT"])
 def update_task(task_id):
     task = Task.query.get_or_404(task_id)
+    user = get_current_user_from_header()
+    if not user:
+      return jsonify({"error": "Not authenticated"}), 401
+    if task.user_id != user.id:
+      return jsonify({"error": "Forbidden"}), 403
     data = request.get_json() or {}
 
     if "title" in data:
@@ -212,6 +235,12 @@ def update_task(task_id):
 @app.route("/tasks/<int:task_id>", methods=["DELETE"])
 def delete_task(task_id):
     task = Task.query.get_or_404(task_id)
+    user = get_current_user_from_header()
+    if not user:
+      return jsonify({"error": "Not authenticated"}), 401
+    if task.user_id != user.id:
+       return jsonify({"error": "Forbidden"}), 403
+
     db.session.delete(task)
     db.session.commit()
     return jsonify({"message": "Task gelöscht"})
@@ -263,8 +292,63 @@ def backend_ok():
 
 
 
+@app.route("/auth/register", methods=["POST"])
+def register():
+    data = request.get_json() or {}
+
+    username = (data.get("username") or "").strip()
+    email = (data.get("email") or "").strip().lower()
+    password = data.get("password") or ""
+
+    if not username or not email or not password:
+        return jsonify({"error": "All fields are required"}), 400
+
+    # prüfen ob User schon existiert
+    if User.query.filter_by(email=email).first():
+        return jsonify({"error": "Email already exists"}), 400
+
+    if User.query.filter_by(username=username).first():
+        return jsonify({"error": "Username already exists"}), 400
+
+    # neuen User erstellen
+    user = User(username=username, email=email)
+    user.set_password(password)
+
+    db.session.add(user)
+    db.session.commit()
+
+    return jsonify({
+        "ok": True,
+        "user": user.to_dict()
+    }), 201
+
+
+@app.route("/debug_users")
+def debug_users():
+    users = User.query.all()
+    return jsonify([{"id": u.id, "email": u.email, "username": u.username} for u in users])
+
+@app.route("/auth/login", methods=["POST"])
+def login():
+    data = request.get_json() or {}
+
+    email = (data.get("email") or "").strip().lower()
+    password = data.get("password") or ""
+
+    if not email or not password:
+        return jsonify({"error": "email and password required"}), 400
+
+    user = User.query.filter_by(email=email).first()
+
+    if not user or not user.check_password(password):
+        return jsonify({"error": "invalid credentials"}), 401
+
+    return jsonify({"ok": True, "user": user.to_dict()}), 200
+
+
 # =========================================
 # Start
 # =========================================
 if __name__ == "__main__":
-    app.run(debug=True)
+    app.run(debug=True)#
+
